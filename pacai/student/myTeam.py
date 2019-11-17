@@ -18,13 +18,26 @@ class LearningAgent(CaptureAgent):
         self.weights = counter.Counter()
 
     def extractFeatures(self, state):
+        """
+        Input: A CaptureGameState
+
+        Returns a counter of features and their corresponding values for the given state.
+        
+        Output: featureCounter (Counter)
+        """
         featureCounter = counter.Counter()
         featureCounter['nullFeature'] = 1
 
         return featureCounter
 
     def getLegalActions(self, state):
-        print(type(state))
+        """
+        Input: A CaptureGameState
+
+        Returns a list containing all legal actions possible from this state for this agent.
+        
+        Output: A list of actions (Strings)
+        """
         return state.getLegalActions(self.index)
 
     def chooseAction(self, state):
@@ -37,7 +50,7 @@ class LearningAgent(CaptureAgent):
 
     def getQValue(self, state, action):
         """
-        Input: A state and action
+        Input: A CaptureGameState and action (String)
 
         Creates a feature vector from the state and calculates a Q value by summing
         the weighted features.
@@ -54,15 +67,14 @@ class LearningAgent(CaptureAgent):
 
     def getValue(self, state):
         """
-        Return the value of the best action in a state.
-        I.E., the value of the action that solves: `max_action Q(state, action)`.
-        Where the max is over legal actions.
-        Note that if there are no legal actions, which is the case at the terminal state,
-        you should return a value of 0.0.
+        Input: A CaptureGameState
 
-        This method pairs with `QLearningAgent.getPolicy`,
-        which returns the actual best action.
-        Whereas this method returns the value of the best action.
+        Looks through all legal actions for a given state and finds that which corresponds to the
+        highest Q-value, then returns that value.
+
+        Returns 0 if there are no legal actions.
+
+        Output: State value (signed int)
         """
         if len(self.getLegalActions(state)) == 0:
             return 0.0
@@ -74,15 +86,14 @@ class LearningAgent(CaptureAgent):
 
     def getPolicy(self, state):
         """
-        Return the best action in a state.
-        I.E., the action that solves: `max_action Q(state, action)`.
-        Where the max is over legal actions.
-        Note that if there are no legal actions, which is the case at the terminal state,
-        you should return a value of None.
+        Input: A CaptureGameState
 
-        This method pairs with `QLearningAgent.getValue`,
-        which returns the value of the best action.
-        Whereas this method returns the best action itself.
+        Look through all legal actions for a given state and finds that which corresponds to the
+        highest Q-value, then returns that action.
+
+        Returns None if ther are no legal actions.
+
+        Output: An action (String) or None
         """
         maxVal = float("-inf")
         bestAction = None
