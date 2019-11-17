@@ -4,6 +4,8 @@ from pacai.util import counter
 from pacai.util import probability
 import random
 
+#States are CaptureGameStates
+
 class LearningAgent(CaptureAgent):
     def __init__(self, index):
         super().__init__(index, 1)
@@ -17,10 +19,13 @@ class LearningAgent(CaptureAgent):
 
     def extractFeatures(self, state):
         featureCounter = counter.Counter()
-        featureCounter['selfPosition'] = state.getAgentPosition(self.index)
+        featureCounter['nullFeature'] = 1
+
+        return featureCounter
 
     def getLegalActions(self, state):
-        return state.getLegalActions(state, self.index)
+        print(type(state))
+        return state.getLegalActions(self.index)
 
     def chooseAction(self, state):
         if self.getLegalActions(state) == 0:
@@ -81,17 +86,11 @@ class LearningAgent(CaptureAgent):
         """
         maxVal = float("-inf")
         bestAction = None
-        qValue = self.getValue(state, a)
-        if maxVal == qValue:
-            bestAction = random.choice([bestAction, a])
-        elif maxVal < qValue:
-            bestAction = a
-            maxVal = qValue
         for a in self.getLegalActions(state):
             qValue = self.getQValue(state, a)
             if maxVal == qValue:
                 bestAction = random.choice([bestAction, a])
-            else:
+            elif maxVal < qValue:
                 bestAction = a
                 maxVal = qValue
 
