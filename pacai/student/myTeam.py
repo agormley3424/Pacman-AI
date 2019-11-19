@@ -67,10 +67,10 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
         agentPos = [agents[0].getPosition(), agents[1].getPosition()]
-        features['splitUp'] = 0
+        # features['tooClose'] = 0
 
-        if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) > 4):
-            features['splitUp'] = 1
+        # if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) < 3):
+        #    features['tooClose'] = 1
 
 
         # DEFENSE FEATURES
@@ -84,6 +84,14 @@ class StrategyAgentA(ReflexCaptureAgent):
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
         features['numInvaders'] = len(invaders)
+
+        if (not myState.isPacman()):
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in enemies]
+            features['enemyDistance'] = min(dists)
+
+        else:
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in enemies]
+            features['danger'] = 1/min(dists)
 
         if (len(invaders) > 0):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
@@ -101,18 +109,20 @@ class StrategyAgentA(ReflexCaptureAgent):
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'splitUp': 100,
+            # 'tooClose': -2,
         }
         
         offensiveWeights = {
             'successorScore': 100,
             'distanceToFood': -1,
+            'danger': -5,
         }
         
         defensiveWeights = {
             'numInvaders': -1000,
             'onDefense': 100,
             'invaderDistance': -10,
+            'enemyDistance': -2,
             'stop': -100,
             'reverse': -2
         }
@@ -167,7 +177,7 @@ class StrategyAgentB(ReflexCaptureAgent):
             self.offensive = 0
             self.defensive = 1
 
-        # worse scenario
+        # worst-case scenario
         else:
             self.offensive = 0
             self.defensive = 1
@@ -182,7 +192,7 @@ class StrategyAgentB(ReflexCaptureAgent):
         features = counter.Counter()
         successor = self.getSuccessor(gameState, action)
         features['successorScore'] = self.getScore(successor)
-        
+
         myState = successor.getAgentState(self.index)
         myPos = myState.getPosition()
 
@@ -197,10 +207,10 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
         agentPos = [agents[0].getPosition(), agents[1].getPosition()]
-        features['splitUp'] = 0
+        # features['tooClose'] = 0
 
-        if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) > 4):
-            features['splitUp'] = 1
+        # if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) < 3):
+        #     features['tooClose'] = 1
 
 
         # DEFENSE FEATURES
@@ -214,6 +224,14 @@ class StrategyAgentB(ReflexCaptureAgent):
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
         features['numInvaders'] = len(invaders)
+
+        if (not myState.isPacman()):
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in enemies]
+            features['enemyDistance'] = min(dists)
+
+        else:
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in enemies]
+            features['danger'] = 1/min(dists)
 
         if (len(invaders) > 0):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
@@ -231,18 +249,20 @@ class StrategyAgentB(ReflexCaptureAgent):
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'splitUp': 100,
+            # 'tooClose': -2,
         }
         
         offensiveWeights = {
             'successorScore': 100,
             'distanceToFood': -1,
+            'danger': -5,
         }
         
         defensiveWeights = {
             'numInvaders': -1000,
             'onDefense': 100,
             'invaderDistance': -10,
+            'enemyDistance': -2,
             'stop': -100,
             'reverse': -2
         }
