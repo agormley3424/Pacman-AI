@@ -1,134 +1,270 @@
 from pacai.util import reflection
-from pacai.agents.capture.capture import CaptureAgent
+from pacai.agents.capture.reflex import ReflexCaptureAgent
+from pacai.core.directions import Directions
 from pacai.util import counter
 from pacai.util import probability
 import random
 
 #States are CaptureGameStates
 
-class LearningAgent(CaptureAgent):
-    def __init__(self, index):
-        super().__init__(index, 1)
+class StrategyAgentA(ReflexCaptureAgent):
+    """
+    A reflex agent that seeks food.
+    This agent will give you an idea of what an offensive agent might look like,
+    but it is by no means the best or only way to build an offensive agent.
+    """
 
-        self.timeLimit = 1
-        self.index = index
-        self.alpha = 0 #Learning rate
-        self.epsilon = 0 #Random exploration probability
-        self.discount = 0 #Discounted reward rate, ???
-        self.weights = counter.Counter()
+    def __init__(self, index, **kwargs):
+        super().__init__(index)
 
-    def extractFeatures(self, state):
-        """
-        Input: A CaptureGameState
+        self.offensive = 1
+        self.defensive = 0
 
-        Returns a counter of features and their corresponding values for the given state.
-        
-        Output: featureCounter (Counter)
-        """
-        featureCounter = counter.Counter()
-        featureCounter['nullFeature'] = 1
+    def getDefensive(self):
+        return self.defensive
 
-        return featureCounter
+    def updateStrategy(self, gameState, action):
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
 
-    def getLegalActions(self, state):
-        """
-        Input: A CaptureGameState
+        agentPos = [agents[0].getPosition(), agents[1].getPosition()]
 
-        Returns a list containing all legal actions possible from this state for this agent.
-        
-        Output: A list of actions (Strings)
-        """
-        return state.getLegalActions(self.index)
+        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
+        defenders = [a for a in agents if not a.isPacman() and a.getPosition() is not None]
 
-    def chooseAction(self, state):
-        if self.getLegalActions(state) == 0:
-            return None
-        elif probability.flipCoin(self.epsilon):
-            return random.choice(self.getLegalActions(state))
+        # best-case scenario
+        if (len(invaders) is 0):
+            self.offensive = 1
+            self.defensive = 0
+
+        # worse scenario
         else:
-            return self.getPolicy(state)
+            self.offensive = 0
+            self.defensive = 1
 
-    def getQValue(self, state, action):
-        """
-        Input: A CaptureGameState and action (String)
 
-        Creates a feature vector from the state and calculates a Q value by summing
-        the weighted features.
+        # print(enemyPos, agentPos)
 
-        Output: A Q-value (signed int)
+    def getFeatures(self, gameState, action):
+        self.updateStrategy(gameState, action)
 
-        """
-        featureCounter = self.extractFeatures(state)
-        features = featureCounter.sortedKeys()
-        qValue = 0
-        for f in featureCounter:
-            qValue += self.weights[f] * featureCounter[f]
-        return qValue
+        # OFFENSE FEATURES
+        features = counter.Counter()
+        successor = self.getSuccessor(gameState, action)
+        features['successorScore'] = self.getScore(successor)
+        
+        myState = successor.getAgentState(self.index)
+        myPos = myState.getPosition()
 
-    def getValue(self, state):
-        """
-        Input: A CaptureGameState
+        # Compute distance to the nearest food.
+        foodList = self.getFood(successor).asList()
 
-        Looks through all legal actions for a given state and finds that which corresponds to the
-        highest Q-value, then returns that value.
+        # This should always be True, but better safe than sorry.
+        if (len(foodList) > 0):
+            myPos = successor.getAgentState(self.index).getPosition()
+            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            features['distanceToFood'] = minDistance
 
-        Returns 0 if there are no legal actions.
+        agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
+        agentPos = [agents[0].getPosition(), agents[1].getPosition()]
+        features['splitUp'] = 0
 
-        Output: State value (signed int)
-        """
-        if len(self.getLegalActions(state)) == 0:
-            return 0.0
-        value = float("-inf")
-        for a in self.getLegalActions(state):
-            qVal = self.getQValue(state, a)
-            value = max(value, qVal)
-        return value
+        if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) > 4):
+            features['splitUp'] = 1
 
-    def getPolicy(self, state):
-        """
-        Input: A CaptureGameState
 
-        Look through all legal actions for a given state and finds that which corresponds to the
-        highest Q-value, then returns that action.
+        # DEFENSE FEATURES
 
-        Returns None if ther are no legal actions.
+        # Computes whether we're on defense (1) or offense (0).
+        features['onDefense'] = 1
+        if (myState.isPacman()):
+            features['onDefense'] = 0
 
-        Output: An action (String) or None
-        """
-        maxVal = float("-inf")
-        bestAction = None
-        for a in self.getLegalActions(state):
-            qValue = self.getQValue(state, a)
-            if maxVal == qValue:
-                bestAction = random.choice([bestAction, a])
-            elif maxVal < qValue:
-                bestAction = a
-                maxVal = qValue
+        # Computes distance to invaders we can see.
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
+        features['numInvaders'] = len(invaders)
 
-        return bestAction
+        if (len(invaders) > 0):
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            features['invaderDistance'] = min(dists)
 
-    def update(self, state, action, nextState, reward):
-        """
-        Input: A state, action, successor state, and reward (signed int)
+        if (action == Directions.STOP):
+            features['stop'] = 1
 
-        Looks at the difference between the values of the current and successor state, multiplies
-        it to each successor state feature value and adds the total to the running average of
-        each weight.
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
+        if (action == rev):
+            features['reverse'] = 1
 
-        Output: None
+        return features
 
-        """
-        featureCounter = self.extractFeatures(state)
-        features = featureCounter.sortedKeys()
-        nextValue = self.getValue(nextState)
-        currentQ = self.getQValue(state, action)
-        sample = (reward + self.discount * nextValue) - currentQ
-        for f in features:
-            self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
+
+    def getWeights(self, gameState, action):
+        ourWeights = {
+            'splitUp': 100,
+        }
+        
+        offensiveWeights = {
+            'successorScore': 100,
+            'distanceToFood': -1,
+        }
+        
+        defensiveWeights = {
+            'numInvaders': -1000,
+            'onDefense': 100,
+            'invaderDistance': -10,
+            'stop': -100,
+            'reverse': -2
+        }
+
+        # ourWeights = (offensiveWeights * self.offensive) + (defensiveWeights * self.defensive)
+        
+        for key in offensiveWeights.keys():
+            feature = offensiveWeights[key]
+
+            ourWeights[key] = feature * self.offensive;
+
+        for key in defensiveWeights.keys():
+            feature = defensiveWeights[key]
+
+            ourWeights[key] = feature * self.defensive;
+
+        return ourWeights
+
+
+class StrategyAgentB(ReflexCaptureAgent):
+    """
+    A reflex agent that seeks food.
+    This agent will give you an idea of what an offensive agent might look like,
+    but it is by no means the best or only way to build an offensive agent.
+    """
+
+    def __init__(self, index, **kwargs):
+        super().__init__(index)
+
+        self.offensive = 1
+        self.defensive = 0
+
+    def getDefensive(self):
+        return self.defensive
+
+    def updateStrategy(self, gameState, action):
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
+
+        agentPos = [agents[0].getPosition(), agents[1].getPosition()]
+
+        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
+        defenders = [a for a in agents if not a.isPacman() and a.getPosition() is not None]
+
+        # best-case scenario
+        if (len(invaders) is 0):
+            self.offensive = 1
+            self.defensive = 0
+
+        # average scenario
+        if (len(invaders) is 1):
+            self.offensive = 0
+            self.defensive = 1
+
+        # worse scenario
+        else:
+            self.offensive = 0
+            self.defensive = 1
+
+
+        # print(enemyPos, agentPos)
+
+    def getFeatures(self, gameState, action):
+        self.updateStrategy(gameState, action)
+
+        # OFFENSE FEATURES
+        features = counter.Counter()
+        successor = self.getSuccessor(gameState, action)
+        features['successorScore'] = self.getScore(successor)
+        
+        myState = successor.getAgentState(self.index)
+        myPos = myState.getPosition()
+
+        # Compute distance to the nearest food.
+        foodList = self.getFood(successor).asList()
+
+        # This should always be True, but better safe than sorry.
+        if (len(foodList) > 0):
+            myPos = successor.getAgentState(self.index).getPosition()
+            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            features['distanceToFood'] = minDistance
+
+        agents = [gameState.getAgentState(i) for i in self.getTeam(gameState)]
+        agentPos = [agents[0].getPosition(), agents[1].getPosition()]
+        features['splitUp'] = 0
+
+        if (abs(agentPos[0][0] - agentPos[1][0]) + abs(agentPos[0][1] - agentPos[1][1]) > 4):
+            features['splitUp'] = 1
+
+
+        # DEFENSE FEATURES
+
+        # Computes whether we're on defense (1) or offense (0).
+        features['onDefense'] = 1
+        if (myState.isPacman()):
+            features['onDefense'] = 0
+
+        # Computes distance to invaders we can see.
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
+        features['numInvaders'] = len(invaders)
+
+        if (len(invaders) > 0):
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            features['invaderDistance'] = min(dists)
+
+        if (action == Directions.STOP):
+            features['stop'] = 1
+
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
+        if (action == rev):
+            features['reverse'] = 1
+
+        return features
+
+
+    def getWeights(self, gameState, action):
+        ourWeights = {
+            'splitUp': 100,
+        }
+        
+        offensiveWeights = {
+            'successorScore': 100,
+            'distanceToFood': -1,
+        }
+        
+        defensiveWeights = {
+            'numInvaders': -1000,
+            'onDefense': 100,
+            'invaderDistance': -10,
+            'stop': -100,
+            'reverse': -2
+        }
+
+        # ourWeights = (offensiveWeights * self.offensive) + (defensiveWeights * self.defensive)
+        
+        for key in offensiveWeights.keys():
+            feature = offensiveWeights[key]
+
+            ourWeights[key] = feature * self.offensive;
+
+        for key in defensiveWeights.keys():
+            feature = defensiveWeights[key]
+
+            ourWeights[key] = feature * self.defensive;
+
+        return ourWeights
+
 
 def createTeam(firstIndex, secondIndex, isRed,
-        first = 'pacai.student.myTeam.LearningAgent',
-        second = 'pacai.student.myTeam.LearningAgent'):
+        first = 'pacai.student.myTeam.StrategyAgentA',
+        second = 'pacai.student.myTeam.StrategyAgentB'):
     """
     This function should return a list of two agents that will form the capture team,
     initialized using firstIndex and secondIndex as their agent indexed.
