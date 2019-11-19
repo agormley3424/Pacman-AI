@@ -5,10 +5,20 @@ from pacai.util import probability
 import random
 
 #States are CaptureGameStates
+#Ask about training
+#Ask about features from states vs. features from states and actions
+#Make update actually get called
+#Have learning and playing mode flags
+#python3 -m pacai.bin.capture --red pacai.student.myTeam --blue pacai.core.baselineTeam 
+#reinforcement agent calls update from one of its own functions
+
+#Removed **args from the createTeam function in capture.py loadAgents
+#Changed numGames > 0 to numGames - numTraining > 0 in capture.py runGames
+#Changed 'games' to g in capture.py runGames
 
 class LearningAgent(CaptureAgent):
     def __init__(self, index):
-        super().__init__(index, 1)
+        super().__init__(index)
 
         self.timeLimit = 1
         self.index = index

@@ -10,6 +10,7 @@ import os
 import pickle
 import random
 import sys
+import inspect
 
 from pacai.agents import keyboard
 from pacai.bin.arguments import getParser
@@ -648,7 +649,6 @@ def loadAgents(isRed, agentModule, textgraphics, args):
 
     createTeamFunctionPath = agentModule + '.createTeam'
     createTeamFunction = reflection.qualifiedImport(createTeamFunctionPath)
-
     logging.info('Loading Team: %s', agentModule)
     logging.info('Arguments: %s', args)
 
@@ -656,8 +656,7 @@ def loadAgents(isRed, agentModule, textgraphics, args):
     if (not isRed):
         indexAddend = 1
     indices = [2 * i + indexAddend for i in range(2)]
-
-    return createTeamFunction(indices[0], indices[1], isRed, **args)
+    return createTeamFunction(indices[0], indices[1], isRed)
 
 def replayGame(layout, agents, actions, display, length, redTeamName, blueTeamName):
     rules = CaptureRules()
@@ -681,7 +680,6 @@ def runGames(layout, agents, display, length, numGames, record, numTraining,
         redTeamName, blueTeamName, catchExceptions = False, **kwargs):
     rules = CaptureRules()
     games = []
-
     nullView = None
     if (numTraining > 0):
         logging.info('Playing %d training games.' % numTraining)
@@ -700,7 +698,7 @@ def runGames(layout, agents, display, length, numGames, record, numTraining,
         g.run()
 
         if (not isTraining):
-            games.append(g)
+            g.append(g)
 
         g.record = None
         if record:
@@ -723,7 +721,7 @@ def runGames(layout, agents, display, length, numGames, record, numTraining,
 
             logging.info("Game recorded to: '%s'." % (path))
 
-    if (numGames > 0):
+    if ((numGames - numTraining) > 0):
         scores = [game.state.getScore() for game in games]
         redWinRate = [s > 0 for s in scores].count(True) / float(len(scores))
         blueWinRate = [s < 0 for s in scores].count(True) / float(len(scores))
