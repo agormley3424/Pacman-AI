@@ -28,8 +28,9 @@ class LearningAgent(CaptureAgent):
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
         self.weights['minDistanceToFood'] = -1
+        self.weights['successorScore'] = 100
 
-    def extractFeatures(self, state, action):
+    def extractFeatures(self, oldState, newState, action):
         """
         Input: A CaptureGameState
 
@@ -39,13 +40,15 @@ class LearningAgent(CaptureAgent):
         """
         featureCounter = counter.Counter()
 
-        foodGrid = self.getFood(state).asList()
+        foodGrid = self.getFood(newState).asList()
         minDist = float("inf")
-        agentPos = state.getAgentPosition(self.index)
+        agentPos = newState.getAgentPosition(self.index)
         for f in foodGrid:
             minDist = min(minDist, self.getMazeDistance(agentPos, f))
 
         featureCounter['minDistanceToFood'] = minDist
+        
+        featureCounter['successorScore'] = self.getScore(newState)
 
         return featureCounter
 
@@ -74,7 +77,6 @@ class LearningAgent(CaptureAgent):
 
     def getReward(self, oldState, newState):
         reward = self.getScore(oldState) - self.getScore(newState)
-
         return reward
 
     def getQValue(self, state, action):
@@ -88,7 +90,7 @@ class LearningAgent(CaptureAgent):
 
         """
         nextState = state.generateSuccessor(self.index, action)
-        featureCounter = self.extractFeatures(nextState, action)
+        featureCounter = self.extractFeatures(state, nextState, action)
         features = featureCounter.sortedKeys()
         qValue = 0
         for f in featureCounter:
@@ -149,7 +151,7 @@ class LearningAgent(CaptureAgent):
 
         """
         nextState = state.generateSuccessor(self.index, action)
-        featureCounter = self.extractFeatures(nextState, action)
+        featureCounter = self.extractFeatures(state, nextState, action)
         features = featureCounter.sortedKeys()
         nextValue = self.getValue(nextState)
         currentQ = self.getQValue(state, action)
