@@ -39,17 +39,18 @@ class LearningAgent(CaptureAgent):
         Output: featureCounter (Counter)
         """
         featureCounter = counter.Counter()
-        newState = state.generateSuccessor(self.index, action)
-        walls = state.getWalls()
-        foodGrid = self.getFood(newState).asList()
+        if not state.isOver():
+            newState = state.generateSuccessor(self.index, action)
+            walls = state.getWalls()
+            foodGrid = self.getFood(newState).asList()
 
-        minDist = float("inf")
-        agentPos = newState.getAgentPosition(self.index)
-        for f in foodGrid:
-            minDist = min(minDist, self.getMazeDistance(agentPos, f))
+            minDist = float("inf")
+            agentPos = newState.getAgentPosition(self.index)
+            for f in foodGrid:
+                minDist = min(minDist, self.getMazeDistance(agentPos, f))
 
-        featureCounter['minDistanceToFood'] = minDist / (walls.getWidth() * walls.getHeight())
-        featureCounter['successorScore'] = self.getReward(state, newState)
+            featureCounter['minDistanceToFood'] = minDist / (walls.getWidth() * walls.getHeight())
+            featureCounter['successorScore'] = self.getReward(state, newState)
 
         return featureCounter
 
