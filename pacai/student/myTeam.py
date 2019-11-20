@@ -28,10 +28,43 @@ class LearningAgent(CaptureAgent):
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
         self.visitedStates = counter.Counter()
-        self.offenseFeatures = ['minDistanceToFood', 'successorScore']
-        self.defenseFeatures = []
-        self.weights['minDistanceToFood'] = -1
-        self.weights['successorScore'] = 100
+        self.strategy = 'offensive'
+        self.features = ['minDistanceToEnemyFood',
+                         'minDistanceToEnemyCapsules',
+                         'successorScore',
+                         'minDistanceToEnemyScared',
+                         'stateRedundancy',
+                         'minDistanceToFriendlyCapsules',
+                         'minDistanceToEnemyBrave',
+                         'minDistanceToEnemyPac']
+        self.weights['minDistanceToEnemyFood'] = -1
+        self.weights['successorReward'] = 100
+
+    def getOpponentPositions(self, state):
+        scaredEnemies = []
+        braveEnemies = []
+        enemyPacPositions = []
+        for o in self.getOpponents(state):
+            enemy = state.getAgentState(o)
+            if enemy.isGhost():
+                if enemy.isScared():
+                    scaredEnemies.append(enemy.getPosition())
+                else:
+                    braveEnemies.append(enemy.getPosition())
+            else:
+                enemyPacPositions.append(enemy.getPosition())
+
+        return scaredEnemies, braveEnemies, enemyPacPositions
+
+    def getAgentPosition(self, state):
+        return state.getAgentPosition(self.index)
+
+    def getFriendPosition(self, state):
+        friendIndex = None
+        for i in self.getTeam(state):
+            if i != self.index:
+                friendIndex = i
+        return state.getAgentPosition(friendIndex)
 
     def extractFeatures(self, state, action):
         """
@@ -46,39 +79,42 @@ class LearningAgent(CaptureAgent):
             newState = state.generateSuccessor(self.index, action)
             walls = state.getWalls()
             area = walls.getWidth() * walls.getHeight()
-            foodList = self.getFood(state).asList()
+            enemyFoodList = self.getFood(state).asList()
             enemyCapsules = self.getCapsules(state)
+            friendlyFood = self.getFoodYouAreDefending(newState).asList()
             friendlyCapsules = self.getCapsulesYouAreDefending(newState)
-            agentPos = newState.getAgentPosition(self.index)
-            scaredEnemies = []
-            braveEnemies = []
-            enemyPacPositions = []
-            for o in self.getOpponents(newState):
-                enemy = newState.getAgentState(o)
-                if enemy.isGhost():
-                    if enemy.isScared():
-                        scaredEnemies.append(enemy.getPosition())
-                    else:
-                        braveEnemies.append(enemy.getPosition())
-                else:
-                    enemyPacPositions.append(enemy.getPosition())
+            agentPos = self.getAgentPosition(state)
+            ghostTuple = self.getOpponentPositions(state)
+            scaredEnemies = ghostTuple[0]
+            braveEnemies = ghostTuple[1]
+            enemyPacPositions = ghostTuple[2]
+            thisAgentState = newState.getAgentState(self.index)
 
             # Offensive Features
+            if len(enemyFoodList) > 0:
+                featureCounter['minDistanceToEnemyFood'] = self.minDistance(enemyFoodList, agentPos) / area
+            if len(enemyCapsules) > 0:
+                featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
+            if len(scaredEnemies) > 0:
+                featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
 
-            featureCounter['minDistanceToFood'] = self.minDistance(foodList, agentPos) / area
-            featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
             featureCounter['successorReward'] = self.getReward(state, newState)
-            featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
             featureCounter['stateRedundancy'] = self.visitedStates[newState]
-
+            """
+            featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
+            
             # Defensive Features
-
-            featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
+            if len(friendlyCapsules) > 0:
+                featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
+            if len(friendlyFood) > 0:
+                featureCounter['minDistanceToFriendlyFood'] = self.minDistance(friendlyFood, agentPos) / area
+            if len(enemyPacPositions) > 0:
+                featureCounter['minDistanceToEnemyPacmen'] = self.minDistance(enemyPacPositions, agentPos) / area
 
             # Offensive and Defensive Features
-
-            featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
-            featureCounter['minDistanceToEnemyPac'] = self.minDistance(enemyPacPositions, agentPos) / area
+            if len(braveEnemies) > 0:
+                featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
+            """
 
         return featureCounter
 
@@ -111,7 +147,31 @@ class LearningAgent(CaptureAgent):
         return action
 
     def getReward(self, oldState, newState):
-        reward = self.getScore(newState) - self.getScore(oldState)
+        newScore = self.getScore(newState)
+        oldScore = self.getScore(oldState)
+
+        agentState = newState.getAgentState(self.index)
+        agentPosition = self.getAgentPosition(newState)
+        ghostTuple = self.getOpponentPositions(newState)
+        scaredEnemies = ghostTuple[0]
+        braveEnemies = ghostTuple[1]
+        enemyPacPositions = ghostTuple[2]
+        combatValue = 0
+        if agentState.isGhost():
+            if agentState.isScared():
+                if agentPosition in enemyPacPositions:
+                    combatValue = -5
+            else:
+                if agentPosition in enemyPacPositions:
+                    combatValue = 3
+        else:
+            if agentPosition in scaredEnemies:
+                combatValue = 3
+            elif agentPosition in braveEnemies:
+                combatValue = -5
+
+        #reward = newScore - oldScore + combatValue - newState.getTimeleft()
+        reward = newScore - oldScore
         return reward
 
     def getQValue(self, state, action):
