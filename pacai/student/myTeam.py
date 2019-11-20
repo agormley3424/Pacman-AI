@@ -23,14 +23,14 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0 #Learning rate
+        self.alpha = 0.01 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
         self.weights['minDistanceToFood'] = -1
         self.weights['successorScore'] = 100
 
-    def extractFeatures(self, oldState, newState, action):
+    def extractFeatures(self, state, action):
         """
         Input: A CaptureGameState
 
@@ -39,16 +39,17 @@ class LearningAgent(CaptureAgent):
         Output: featureCounter (Counter)
         """
         featureCounter = counter.Counter()
-
+        newState = state.generateSuccessor(self.index, action)
+        walls = state.getWalls()
         foodGrid = self.getFood(newState).asList()
+
         minDist = float("inf")
         agentPos = newState.getAgentPosition(self.index)
         for f in foodGrid:
             minDist = min(minDist, self.getMazeDistance(agentPos, f))
 
-        featureCounter['minDistanceToFood'] = minDist
-        
-        featureCounter['successorScore'] = self.getScore(newState)
+        featureCounter['minDistanceToFood'] = minDist / (walls.getWidth() * walls.getHeight())
+        featureCounter['successorScore'] = self.getReward(state, newState)
 
         return featureCounter
 
@@ -76,7 +77,7 @@ class LearningAgent(CaptureAgent):
         return action
 
     def getReward(self, oldState, newState):
-        reward = self.getScore(oldState) - self.getScore(newState)
+        reward = self.getScore(newState) - self.getScore(oldState)
         return reward
 
     def getQValue(self, state, action):
@@ -89,8 +90,7 @@ class LearningAgent(CaptureAgent):
         Output: A Q-value (signed int)
 
         """
-        nextState = state.generateSuccessor(self.index, action)
-        featureCounter = self.extractFeatures(state, nextState, action)
+        featureCounter = self.extractFeatures(state, action)
         features = featureCounter.sortedKeys()
         qValue = 0
         for f in featureCounter:
@@ -136,7 +136,6 @@ class LearningAgent(CaptureAgent):
             elif maxVal < qValue:
                 bestAction = a
                 maxVal = qValue
-
         return bestAction
 
     def update(self, state, action, nextState, reward):
@@ -150,12 +149,17 @@ class LearningAgent(CaptureAgent):
         Output: None
 
         """
-        nextState = state.generateSuccessor(self.index, action)
-        featureCounter = self.extractFeatures(state, nextState, action)
+        #The discount makes a positive number smaller, but makes a negative number larger (resolved by setting discount to 1/discount if nextValue is negative)
+        #Weight for minimum distance is becoming a gigantic negative number, overshadowing all other features
+        featureCounter = self.extractFeatures(state, action)
         features = featureCounter.sortedKeys()
         nextValue = self.getValue(nextState)
+        if nextValue < 0:
+            discount = 1 / self.discount
+        else:
+            discount = self.discount
         currentQ = self.getQValue(state, action)
-        sample = (reward + self.discount * nextValue) - currentQ
+        sample = (reward + discount * nextValue) - currentQ
         for f in features:
             self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
 
