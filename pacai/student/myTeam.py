@@ -12,6 +12,8 @@ import random
 #python3 -m pacai.bin.capture --red pacai.student.myTeam --blue pacai.core.baselineTeam 
 #reinforcement agent calls update from one of its own functions
 
+#final is being called twice at the end, once for each agent
+
 #Removed **args from the createTeam function in capture.py loadAgents
 #Changed numGames > 0 to numGames - numTraining > 0 in capture.py runGames
 
@@ -21,10 +23,11 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0.5 #Learning rate
+        self.alpha = 0 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
+        self.weights['minDistanceToFood'] = -1
 
     def extractFeatures(self, state, action):
         """
@@ -35,7 +38,14 @@ class LearningAgent(CaptureAgent):
         Output: featureCounter (Counter)
         """
         featureCounter = counter.Counter()
-        featureCounter['nullFeature'] = 1
+
+        foodGrid = self.getFood(state).asList()
+        minDist = float("inf")
+        agentPos = state.getAgentPosition(self.index)
+        for f in foodGrid:
+            minDist = min(minDist, self.getMazeDistance(agentPos, f))
+
+        featureCounter['minDistanceToFood'] = minDist
 
         return featureCounter
 
@@ -77,7 +87,8 @@ class LearningAgent(CaptureAgent):
         Output: A Q-value (signed int)
 
         """
-        featureCounter = self.extractFeatures(state, action)
+        nextState = state.generateSuccessor(self.index, action)
+        featureCounter = self.extractFeatures(nextState, action)
         features = featureCounter.sortedKeys()
         qValue = 0
         for f in featureCounter:
@@ -137,7 +148,8 @@ class LearningAgent(CaptureAgent):
         Output: None
 
         """
-        featureCounter = self.extractFeatures(state, action)
+        nextState = state.generateSuccessor(self.index, action)
+        featureCounter = self.extractFeatures(nextState, action)
         features = featureCounter.sortedKeys()
         nextValue = self.getValue(nextState)
         currentQ = self.getQValue(state, action)
