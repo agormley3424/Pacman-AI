@@ -23,7 +23,7 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0.01 #Learning rate
+        self.alpha = 0 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
@@ -83,8 +83,8 @@ class LearningAgent(CaptureAgent):
             enemyCapsules = self.getCapsules(state)
             friendlyFood = self.getFoodYouAreDefending(newState).asList()
             friendlyCapsules = self.getCapsulesYouAreDefending(newState)
-            agentPos = self.getAgentPosition(state)
-            ghostTuple = self.getOpponentPositions(state)
+            agentPos = self.getAgentPosition(newState)
+            ghostTuple = self.getOpponentPositions(newState)
             scaredEnemies = ghostTuple[0]
             braveEnemies = ghostTuple[1]
             enemyPacPositions = ghostTuple[2]
@@ -100,7 +100,7 @@ class LearningAgent(CaptureAgent):
 
             featureCounter['successorReward'] = self.getReward(state, newState)
             featureCounter['stateRedundancy'] = self.visitedStates[newState]
-            """
+            
             featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
             
             # Defensive Features
@@ -114,7 +114,7 @@ class LearningAgent(CaptureAgent):
             # Offensive and Defensive Features
             if len(braveEnemies) > 0:
                 featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
-            """
+            
 
         return featureCounter
 
@@ -170,8 +170,7 @@ class LearningAgent(CaptureAgent):
             elif agentPosition in braveEnemies:
                 combatValue = -5
 
-        #reward = newScore - oldScore + combatValue - newState.getTimeleft()
-        reward = newScore - oldScore
+        reward = newScore - oldScore + combatValue - newState.getTimeleft()
         return reward
 
     def getQValue(self, state, action):
