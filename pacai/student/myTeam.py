@@ -27,6 +27,7 @@ class LearningAgent(CaptureAgent):
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
+        self.features = ['minDistanceToFood', 'successorScore']
         self.weights['minDistanceToFood'] = -1
         self.weights['successorScore'] = 100
 
@@ -165,9 +166,7 @@ class LearningAgent(CaptureAgent):
             self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
 
     def final(self, gameState):
-        featureCounter = self.extractFeatures(gameState, 'North')
-        features = featureCounter.sortedKeys()
-        for f in features:
+        for f in self.features:
             print(f + ' ' + str(self.weights[f]))
 
 def createTeam(firstIndex, secondIndex, isRed,
