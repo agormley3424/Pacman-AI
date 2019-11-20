@@ -14,7 +14,6 @@ import random
 
 #Removed **args from the createTeam function in capture.py loadAgents
 #Changed numGames > 0 to numGames - numTraining > 0 in capture.py runGames
-#Changed 'games' to g in capture.py runGames
 
 class LearningAgent(CaptureAgent):
     def __init__(self, index):
@@ -22,12 +21,12 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0 #Learning rate
+        self.alpha = 0.5 #Learning rate
         self.epsilon = 0 #Random exploration probability
-        self.discount = 0 #Discounted reward rate, ???
+        self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
 
-    def extractFeatures(self, state):
+    def extractFeatures(self, state, action):
         """
         Input: A CaptureGameState
 
@@ -54,9 +53,19 @@ class LearningAgent(CaptureAgent):
         if self.getLegalActions(state) == 0:
             return None
         elif probability.flipCoin(self.epsilon):
-            return random.choice(self.getLegalActions(state))
+            action = random.choice(self.getLegalActions(state))
         else:
-            return self.getPolicy(state)
+            action = self.getPolicy(state)
+
+        nextState = state.generateSuccessor(self.index, action)
+        reward = self.getReward(state, nextState)
+        self.update(state, action, nextState, reward)
+        return action
+
+    def getReward(self, oldState, newState):
+        reward = self.getScore(oldState) - self.getScore(newState)
+
+        return reward
 
     def getQValue(self, state, action):
         """
@@ -68,7 +77,7 @@ class LearningAgent(CaptureAgent):
         Output: A Q-value (signed int)
 
         """
-        featureCounter = self.extractFeatures(state)
+        featureCounter = self.extractFeatures(state, action)
         features = featureCounter.sortedKeys()
         qValue = 0
         for f in featureCounter:
@@ -128,13 +137,19 @@ class LearningAgent(CaptureAgent):
         Output: None
 
         """
-        featureCounter = self.extractFeatures(state)
+        featureCounter = self.extractFeatures(state, action)
         features = featureCounter.sortedKeys()
         nextValue = self.getValue(nextState)
         currentQ = self.getQValue(state, action)
         sample = (reward + self.discount * nextValue) - currentQ
         for f in features:
             self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
+
+    def final(self, gameState):
+        featureCounter = self.extractFeatures(gameState, 'North')
+        features = featureCounter.sortedKeys()
+        for f in features:
+            print(f + ' ' + str(self.weights[f]))
 
 def createTeam(firstIndex, secondIndex, isRed,
         first = 'pacai.student.myTeam.LearningAgent',

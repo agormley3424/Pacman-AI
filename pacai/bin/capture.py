@@ -698,7 +698,7 @@ def runGames(layout, agents, display, length, numGames, record, numTraining,
         g.run()
 
         if (not isTraining):
-            g.append(g)
+            games.append(g)
 
         g.record = None
         if record:
