@@ -27,7 +27,9 @@ class LearningAgent(CaptureAgent):
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
-        self.features = ['minDistanceToFood', 'successorScore']
+        self.visitedStates = counter.Counter()
+        self.offenseFeatures = ['minDistanceToFood', 'successorScore']
+        self.defenseFeatures = []
         self.weights['minDistanceToFood'] = -1
         self.weights['successorScore'] = 100
 
@@ -43,17 +45,48 @@ class LearningAgent(CaptureAgent):
         if not state.isOver():
             newState = state.generateSuccessor(self.index, action)
             walls = state.getWalls()
-            foodGrid = self.getFood(newState).asList()
-
-            minDist = float("inf")
+            area = walls.getWidth() * walls.getHeight()
+            foodList = self.getFood(state).asList()
+            enemyCapsules = self.getCapsules(state)
+            friendlyCapsules = self.getCapsulesYouAreDefending(newState)
             agentPos = newState.getAgentPosition(self.index)
-            for f in foodGrid:
-                minDist = min(minDist, self.getMazeDistance(agentPos, f))
+            scaredEnemies = []
+            braveEnemies = []
+            enemyPacPositions = []
+            for o in self.getOpponents(newState):
+                enemy = newState.getAgentState(o)
+                if enemy.isGhost():
+                    if enemy.isScared():
+                        scaredEnemies.append(enemy.getPosition())
+                    else:
+                        braveEnemies.append(enemy.getPosition())
+                else:
+                    enemyPacPositions.append(enemy.getPosition())
 
-            featureCounter['minDistanceToFood'] = minDist / (walls.getWidth() * walls.getHeight())
-            featureCounter['successorScore'] = self.getReward(state, newState)
+            # Offensive Features
+
+            featureCounter['minDistanceToFood'] = self.minDistance(foodList, agentPos) / area
+            featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
+            featureCounter['successorReward'] = self.getReward(state, newState)
+            featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
+            featureCounter['stateRedundancy'] = self.visitedStates[newState]
+
+            # Defensive Features
+
+            featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
+
+            # Offensive and Defensive Features
+
+            featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
+            featureCounter['minDistanceToEnemyPac'] = self.minDistance(enemyPacPositions, agentPos) / area
 
         return featureCounter
+
+    def minDistance(self, positionList, originPoint):
+        minDist = float("inf")
+        for p in positionList:
+            minDist = min(minDist, self.getMazeDistance(originPoint, p))
+        return minDist
 
     def getLegalActions(self, state):
         """
@@ -72,7 +105,6 @@ class LearningAgent(CaptureAgent):
             action = random.choice(self.getLegalActions(state))
         else:
             action = self.getPolicy(state)
-
         nextState = state.generateSuccessor(self.index, action)
         reward = self.getReward(state, nextState)
         self.update(state, action, nextState, reward)
@@ -164,6 +196,7 @@ class LearningAgent(CaptureAgent):
         sample = (reward + discount * nextValue) - currentQ
         for f in features:
             self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
+        self.visitedStates[state] += 1
 
     def final(self, gameState):
         for f in self.features:
