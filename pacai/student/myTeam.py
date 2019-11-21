@@ -23,20 +23,23 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0.1 #Learning rate
+        self.alpha = 0 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
         self.visitedStates = counter.Counter()
-        self.strategy = 'offensive'
-        self.features = ['minDistanceToEnemyFood',
-                         'minDistanceToEnemyCapsules',
-                         'successorScore',
-                         'minDistanceToEnemyScared',
-                         'stateRedundancy',
-                         'minDistanceToFriendlyCapsules',
-                         'minDistanceToEnemyBrave',
-                         'minDistanceToEnemyPac']
+        self.offensiveFeatures = ['minDistanceToEnemyFood',
+                                  'minDistanceToEnemyCapsules',
+                                  'successorScore',
+                                  'minDistanceToEnemyScared',
+                                  'stateRedundancy',
+                                  'onEnemySide']
+        self.defensiveFeatures = ['minDistanceToFriendlyCapsules',
+                                  'minDistanceToFriendlyFood',
+                                  'minDistanceToEnemyPacmen',
+                                  'minDistanceToEnemyBrave']
+        self.strategy = 'defensive'
+        self.features = self.defensiveFeatures
         self.weights['minDistanceToEnemyFood'] = -1
         self.weights['successorReward'] = 100
         self.stage = 0
@@ -78,45 +81,48 @@ class LearningAgent(CaptureAgent):
         featureCounter = counter.Counter()
         if not state.isOver():
             newState = state.generateSuccessor(self.index, action)
+            agentPos = self.getAgentPosition(newState)
             walls = state.getWalls()
             area = walls.getWidth() * walls.getHeight()
-            enemyFoodList = self.getFood(state).asList()
-            enemyCapsules = self.getCapsules(state)
-            friendlyFood = self.getFoodYouAreDefending(newState).asList()
-            friendlyCapsules = self.getCapsulesYouAreDefending(newState)
-            agentPos = self.getAgentPosition(newState)
-            ghostTuple = self.getOpponentPositions(newState)
-            scaredEnemies = ghostTuple[0]
-            braveEnemies = ghostTuple[1]
-            enemyPacPositions = ghostTuple[2]
-            thisAgentState = newState.getAgentState(self.index)
-            
-            # Offensive Features
-            if len(enemyFoodList) > 0:
-                featureCounter['minDistanceToEnemyFood'] = self.minDistance(enemyFoodList, agentPos) / area
-            if len(enemyCapsules) > 0:
-                featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
-            if len(scaredEnemies) > 0:
-                featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
-            
-            featureCounter['successorReward'] = self.getReward(state, newState)
-            #print(featureCounter['successorReward'])
-            #featureCounter['stateRedundancy'] = self.visitedStates[newState]
-            
-            #featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
-            """
-            # Defensive Features
-            if len(friendlyCapsules) > 0:
-                featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
-            if len(friendlyFood) > 0:
-                featureCounter['minDistanceToFriendlyFood'] = self.minDistance(friendlyFood, agentPos) / area
-            if len(enemyPacPositions) > 0:
-                featureCounter['minDistanceToEnemyPacmen'] = self.minDistance(enemyPacPositions, agentPos) / area
+            enemyTuple = self.getOpponentPositions(newState)
 
-            # Offensive and Defensive Features
-            if len(braveEnemies) > 0:
-                featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
-            """
+            if self.strategy == 'offensive':
+                enemyFoodList = self.getFood(state).asList()
+                enemyCapsules = self.getCapsules(state)
+                friendlyFood = self.getFoodYouAreDefending(newState).asList()
+                friendlyCapsules = self.getCapsulesYouAreDefending(newState)
+                scaredEnemies = enemyTuple[0]
+                thisAgentState = newState.getAgentState(self.index)
+                
+                if len(enemyFoodList) > 0:
+                    featureCounter['minDistanceToEnemyFood'] = self.minDistance(enemyFoodList, agentPos) / area
+                if len(enemyCapsules) > 0:
+                    featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
+                if len(scaredEnemies) > 0:
+                    featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
+                
+                featureCounter['successorReward'] = self.getReward(state, newState)
+                featureCounter['stateRedundancy'] = self.visitedStates[newState]
+                
+                featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
+
+            elif self.strategy == 'defensive':
+                friendlyFood = self.getFoodYouAreDefending(newState).asList()
+                friendlyCapsules = self.getCapsulesYouAreDefending(newState)
+                enemyPacPositions = enemyTuple[2]
+                braveEnemies = enemyTuple[1]
+                numInvaders = 0
+
+                if len(friendlyCapsules) > 0:
+                    featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
+                if len(friendlyFood) > 0:
+                    featureCounter['minDistanceToFriendlyFood'] = self.minDistance(friendlyFood, agentPos) / area
+                if len(enemyPacPositions) > 0:
+                    featureCounter['minDistanceToEnemyPacmen'] = self.minDistance(enemyPacPositions, agentPos) / area
+                if len(braveEnemies) > 0:
+                    featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
+
+            
         return featureCounter
 
     def minDistance(self, positionList, originPoint):
@@ -154,7 +160,7 @@ class LearningAgent(CaptureAgent):
 
         agentState = newState.getAgentState(self.index)
         agentPosition = self.getAgentPosition(newState)
-        ghostTuple = self.getOpponentPositions(newState)
+        ghostTuple = self.getOpponentPositions(oldState)
         scaredEnemies = ghostTuple[0]
         braveEnemies = ghostTuple[1]
         enemyPacPositions = ghostTuple[2]
