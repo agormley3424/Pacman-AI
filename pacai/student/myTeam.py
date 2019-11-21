@@ -23,7 +23,7 @@ class LearningAgent(CaptureAgent):
 
         self.timeLimit = 1
         self.index = index
-        self.alpha = 0 #Learning rate
+        self.alpha = 0.1 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
@@ -39,6 +39,7 @@ class LearningAgent(CaptureAgent):
                          'minDistanceToEnemyPac']
         self.weights['minDistanceToEnemyFood'] = -1
         self.weights['successorReward'] = 100
+        self.stage = 0
 
     def getOpponentPositions(self, state):
         scaredEnemies = []
@@ -89,7 +90,7 @@ class LearningAgent(CaptureAgent):
             braveEnemies = ghostTuple[1]
             enemyPacPositions = ghostTuple[2]
             thisAgentState = newState.getAgentState(self.index)
-
+            
             # Offensive Features
             if len(enemyFoodList) > 0:
                 featureCounter['minDistanceToEnemyFood'] = self.minDistance(enemyFoodList, agentPos) / area
@@ -97,12 +98,13 @@ class LearningAgent(CaptureAgent):
                 featureCounter['minDistanceToEnemyCapsules'] = self.minDistance(enemyCapsules, agentPos) / area
             if len(scaredEnemies) > 0:
                 featureCounter['minDistanceToEnemyScared'] = self.minDistance(scaredEnemies, agentPos) / area
-
+            
             featureCounter['successorReward'] = self.getReward(state, newState)
-            featureCounter['stateRedundancy'] = self.visitedStates[newState]
+            #print(featureCounter['successorReward'])
+            #featureCounter['stateRedundancy'] = self.visitedStates[newState]
             
-            featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
-            
+            #featureCounter['onEnemySide'] = 1 if thisAgentState.isPacman() else 0
+            """
             # Defensive Features
             if len(friendlyCapsules) > 0:
                 featureCounter['minDistanceToFriendlyCapsules'] = self.minDistance(friendlyCapsules, agentPos) / area
@@ -114,8 +116,7 @@ class LearningAgent(CaptureAgent):
             # Offensive and Defensive Features
             if len(braveEnemies) > 0:
                 featureCounter['minDistanceToEnemyBrave'] = self.minDistance(braveEnemies, agentPos) / area
-            
-
+            """
         return featureCounter
 
     def minDistance(self, positionList, originPoint):
@@ -144,6 +145,7 @@ class LearningAgent(CaptureAgent):
         nextState = state.generateSuccessor(self.index, action)
         reward = self.getReward(state, nextState)
         self.update(state, action, nextState, reward)
+        self.stage += 1
         return action
 
     def getReward(self, oldState, newState):
@@ -169,8 +171,7 @@ class LearningAgent(CaptureAgent):
                 combatValue = 3
             elif agentPosition in braveEnemies:
                 combatValue = -5
-
-        reward = newScore - oldScore + combatValue - newState.getTimeleft()
+        reward = newScore - oldScore + combatValue - pow(0.5, self.stage)
         return reward
 
     def getQValue(self, state, action):
@@ -188,6 +189,8 @@ class LearningAgent(CaptureAgent):
         qValue = 0
         for f in featureCounter:
             qValue += self.weights[f] * featureCounter[f]
+        if qValue == float("-inf"):
+            return None
         return qValue
 
     def getValue(self, state):
