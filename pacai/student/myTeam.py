@@ -7,7 +7,7 @@ from pacai.util import counter
 
 # States are CaptureGameStates
 
-class StrategyAgentA(ReflexCaptureAgent):
+class OffenseAgent(ReflexCaptureAgent):
     """
     This is an offense agent.
 
@@ -50,24 +50,30 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
-    def getFeatures(self, gameState, action):
+    def minDistance(self, positionList, originPoint):
+        minDist = float("inf")
+        for p in positionList:
+            minDist = min(minDist, self.getMazeDistance(originPoint, p))
+        return minDist
+
+    def getFeatures(self, oldState, action):
+        # Made score take difference rather than the new score only
+        # Using old positions of enemy food
+        # Removed setting features['onCapsule] = 0
+        # Commented out features['onDefense']
         self.updateExpectation(gameState)
 
         features = counter.Counter()
-        successor = self.getSuccessor(gameState, action)
-        features['successorScore'] = self.getScore(successor)
+        newState = self.getSuccessor(gameState, action)
+        newAgentState = newState.getAgentState(self.index)
+        enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
+        enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
+        newPos = newState.getAgentState(self.index).getPosition()
 
-        myState = successor.getAgentState(self.index)
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)       
 
-        # Compute distance to the nearest food.
-        foodList = self.getFood(successor).asList()
-
-        # This should always be True, but better safe than sorry.
-        if (len(foodList) > 0):
-            myPos = successor.getAgentState(self.index).getPosition()
-            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-
+        if (len(enemyFood) > 0):
+            enemyFoodDist = self.minDistance(newPos, enemyFood)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = minDistance ** 0.7
 
@@ -82,37 +88,35 @@ class StrategyAgentA(ReflexCaptureAgent):
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
             features['distToAvgFood'] = (abs(myPos[0] - averageFood[0])
-                                        + abs(myPos[1] - averageFood[1])) ** 1.2
+                                         + abs(myPos[1] - averageFood[1])) ** 1.2
 
         if (enemies[0].isBraveGhost()) and (enemies[1].isBraveGhost()):
-            capsuleList = self.getCapsules(successor)
+            enemyCapsules = self.getCapsules(newState)
 
-            if (len(capsuleList) > 0):
-                myPos = successor.getAgentState(self.index).getPosition()
-                minDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+            if (len(enemyCapsules) > 0):
+                capsuleDist = self.minDistance(newPos, enemyCapsules)
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
                 features['distanceToCapsule'] = minDistance ** 0.9
 
-                features['onCapsule'] = 0
                 if (len(capsuleList) < len(self.getCapsules(gameState))):
                     features['onCapsule'] = 1
 
-        myPos = myState.getPosition()
-
         # Computes whether we're on defense (1) or offense (0).
+        """
         features['onDefense'] = 1
         if (myState.isPacman()):
             features['onDefense'] = 0
+        """
 
         # Determine whether the agent should be afraid of ghosts or seeking out afraid ones.
-        if myState.isPacman():
+        if newAgentState.isPacman():
             brave = []
             scared = []
 
             # Check which ghosts are scared.
-            for a in enemies:
+            for a in enemyStates:
                 if a.isBraveGhost():
                     brave.append(a)
 
@@ -175,7 +179,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         return ourWeights
 
-class StrategyAgentB(ReflexCaptureAgent):
+class DefenseAgent(ReflexCaptureAgent):
     """
     This is a defense agent.
 
@@ -408,8 +412,8 @@ class StrategyAgentB(ReflexCaptureAgent):
         return ourWeights
 
 def createTeam(firstIndex, secondIndex, isRed,
-        first = 'pacai.student.myTeam.StrategyAgentA',
-        second = 'pacai.student.myTeam.StrategyAgentB'):
+        first = 'pacai.student.myTeam.OffenseAgent',
+        second = 'pacai.student.myTeam.DefenseAgent'):
     """
     This function should return a list of two agents that will form the capture team,
     initialized using firstIndex and secondIndex as their agent indexed.
