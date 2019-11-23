@@ -70,7 +70,7 @@ class OffenseAgent(ReflexCaptureAgent):
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
 
-        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)       
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if (len(enemyFood) > 0):
             enemyFoodDist = self.minDistance(enemyFood, newPos)
