@@ -2,6 +2,7 @@ from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+import random
 # from pacai.util import probability
 # import random
 
@@ -26,10 +27,26 @@ class OffenseAgent(ReflexCaptureAgent):
 
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
+        self.simulatedIntrospection = False
+
+    def chooseActionIndex(self, gameState, index):
+        """
+        Picks among the actions with the highest return from `ReflexCaptureAgent.evaluate`.
+        """
+        
+        actions = gameState.getLegalActions(index)
+        self.simulatedIntrospection = True
+        values = [self.evaluate(gameState, a, index) for a in actions]
+
+        maxValue = max(values)
+        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+
+        return random.choice(bestActions)
+
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
-        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState, self.index)]
 
         index = 0
 
@@ -55,22 +72,154 @@ class OffenseAgent(ReflexCaptureAgent):
         for p in positionList:
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
+    """
+    def abMaxValue(agent, gameState, treeDepth, agentIndex, alpha, beta, levelCount, evalFn):
+        legalActions = gameState.getLegalActions(agentIndex)
 
-    def getFeatures(self, oldState, action):
+        # remove STOP as a direction for pac-man
+        if (Directions.STOP in legalActions):
+            legalActions.remove(Directions.STOP)
+
+        # end search if game is over or max tree depth has been reached
+        if (levelCount == treeDepth * 4) or (gameState.isOver()):
+            return (evalFn(gameState), Directions.STOP)
+
+        if agentIndex > len(self.getOpponents()) + len(self.getTeam) - 1:
+            agentIndex = 0
+
+        # max value
+        maxScore = float("-inf")
+        bestAction = Directions.STOP
+
+        # (score, action) pair
+         scorePair = abMinValue(agent, gameState.generateSuccessor(agentIndex, action), treeDepth, agentIndex + 1, alpha,
+                                beta, levelCount + 1)
+
+        # update best action and score
+        if (scorePair[0] > maxScore):
+            maxScore = scorePair[0]
+
+        # return if score exceeeds bounds
+        if (maxScore >= beta):
+            return (maxScore, bestAction)
+
+        # update alpha
+        alpha = max(alpha, maxScore)
+
+        return (maxScore, bestAction)
+
+    def abMinValue(agent, gameState, treeDepth, agentIndex, alpha, beta, levelCount, evalFn):
+        legalActions = gameState.getLegalActions(agentIndex)
+
+        # end search if game is over
+        if (gameState.isOver()):
+            return evalFn(gameState)
+
+        numAgents = gameState.getNumAgents()
+
+        # min value
+        minScore = float("inf")
+        worstAction = Directions.STOP
+
+        # iterate through all possible actions
+        for action in legalActions:
+            scorePair = None
+
+            # (score, action) pair
+            # continue iterating through ghosts or search pac-man's actions next
+            if (agentIndex < numAgents - 1):
+                scorePair = abMinValue(agent, gameState.generateSuccessor(agentIndex, action),
+                                    treeDepth, agentIndex + 1, alpha, beta)
+            else:
+                scorePair = abMaxValue(agent, gameState.generateSuccessor(agentIndex, action),
+                                    treeDepth - 1, 0, alpha, beta)
+
+            # update worst action and score
+            if (scorePair[0] < minScore):
+                minScore = scorePair[0]
+                worstAction = action
+
+            # return if score exceeds bounds
+            if (minScore <= alpha):
+                return(minScore, worstAction)
+
+            # update beta
+            beta = min(beta, minScore)
+
+        return (minScore, worstAction)
+    """
+    def gonnaDie(self, oldState, newState, depth, level, index):
+        if index > max(self.getOpponents(newState, index) + self.getTeam(newState, index)):
+            index = min(self.getOpponents(newState, index) + self.getTeam(newState, index))
+        if self.isEaten(oldState, newState, index):
+            return True
+        elif level == depth * 4:
+            return False
+        else:
+            newerState = newState.generateSuccessor(index, self.chooseActionIndex(newState, index))
+            return self.gonnaDie(newState, newerState, depth, level + 1, index + 1)
+
+    def isEaten(self, oldState, newState, index):
+        agentPos = oldState.getAgentPosition(self.index)
+        enemyPositions = [newState.getAgentPosition(i) for i in self.getOpponents(newState, index)]
+        if agentPos in enemyPositions:
+            return True
+        else:
+            return False
+
+    def getScore(self, gameState, index):
+        if index % 2 == 0:
+            return gameState.getScore()
+        else:
+            return gameState.getScore() * -1
+
+    def getOpponents(self, gameState, index):
+        if index % 2 == 0:
+            return gameState.getBlueTeamIndices()
+        else:
+            return gameState.getRedTeamIndices()
+
+    def getCapsules(self, gameState, index):
+        if index % 2 == 0:
+            return gameState.getBlueCapsules()
+        else:
+            return gameState.getRedCapsules()
+
+    def getTeam(self, gameState, index):
+        if index % 2 == 0:
+            return gameState.getRedTeamIndices()
+        else:
+            return gameState.getBlueTeamIndices()
+
+    def evaluate(self, gameState, action, index = None):
+        """
+        Computes a linear combination of features and feature weights.
+        """
+        if index is None:
+            index = self.index
+        features = self.getFeatures(gameState, action, index)
+        weights = self.getWeights(gameState, action)
+
+        return features * weights
+
+    def getFeatures(self, oldState, action, index = None):
         # Made score take difference rather than the new score only
         # Using old positions of enemy food
         # Removed setting features['onCapsule] = 0
         # Commented out features['onDefense']
+        if index is None:
+            index = self.index
+
         self.updateExpectation(oldState)
 
         features = counter.Counter()
-        newState = self.getSuccessor(oldState, action)
-        newAgentState = newState.getAgentState(self.index)
-        enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
+        newState = oldState.generateSuccessor(index, action)
+        newAgentState = newState.getAgentState(index)
+        enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState, index)]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
-        newPos = newState.getAgentState(self.index).getPosition()
+        newPos = newState.getAgentState(index).getPosition()
 
-        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
+        features['newStateScore'] = self.getScore(newState, index) - self.getScore(oldState, index)  
 
         if (len(enemyFood) > 0):
             enemyFoodDist = self.minDistance(enemyFood, newPos)
@@ -91,7 +240,7 @@ class OffenseAgent(ReflexCaptureAgent):
                                          + abs(newPos[1] - averageFood[1])) ** 1.2
 
         if (enemyStates[0].isBraveGhost()) and (enemyStates[1].isBraveGhost()):
-            enemyCapsules = self.getCapsules(oldState)
+            enemyCapsules = self.getCapsules(oldState, index)
 
             if (len(enemyCapsules) > 0):
                 capsuleDist = self.minDistance(enemyCapsules, newPos)
@@ -100,7 +249,7 @@ class OffenseAgent(ReflexCaptureAgent):
                 # The only difference is that power pellets are relevant within a larger radius.
                 features['distanceToCapsule'] = capsuleDist ** 0.9
 
-                if (len(enemyCapsules) < len(self.getCapsules(oldState))):
+                if (len(enemyCapsules) > len(self.getCapsules(newState, index))):
                     features['onCapsule'] = 1
 
         # Computes whether we're on defense (1) or offense (0).
@@ -145,7 +294,7 @@ class OffenseAgent(ReflexCaptureAgent):
             
             oldScaredies = []
             oldBravies = []
-            oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState)]
+            oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState, index)]
             for s in oldEnemyStates:
                 if s.isScared():
                     oldScaredies.append(s.getPosition())
@@ -160,6 +309,9 @@ class OffenseAgent(ReflexCaptureAgent):
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
 
+            if not self.simulatedIntrospection:
+                features['gonnaDie'] = 1 if self.gonnaDie(oldState, newState, 1, 1, index) else 0
+
         return features
 
     def getWeights(self, gameState, action):
@@ -173,6 +325,7 @@ class OffenseAgent(ReflexCaptureAgent):
             'distToScared': 1,
             'eatenGhost': 10000,
             'onDefense': -10,
+            'gonnaDie': -1000
         }
 
         return ourWeights
