@@ -29,6 +29,12 @@ class OffenseAgent(ReflexCaptureAgent):
         self.offenseDetector = [1, 1]
         self.simulatedIntrospection = False
 
+    def makeProgramWork(self, everything):
+        if not programWork():
+            self.makeProgramWork(everything)
+        else:
+            return None
+
     def chooseActionIndex(self, gameState, index):
         """
         Picks among the actions with the highest return from `ReflexCaptureAgent.evaluate`.
