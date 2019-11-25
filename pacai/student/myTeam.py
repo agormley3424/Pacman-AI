@@ -29,11 +29,11 @@ class OffenseAgent(ReflexCaptureAgent):
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
         self.introspection = False
-        self.alpha = 0 #Learning rate
+        self.alpha = 0.1 #Learning rate
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
-        self.initWeights()
+        #self.initWeights()
         self.features = [
             'newStateScore',
             'distanceToFood',
@@ -434,8 +434,6 @@ class OffenseAgent(ReflexCaptureAgent):
         print(self.index)
         for f in self.features:
             print(f + ' ' + str(self.weights[f]))
-
-        return ourWeights
 
 class DefenseAgent(ReflexCaptureAgent):
     """
