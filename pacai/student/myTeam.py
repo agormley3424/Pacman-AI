@@ -27,6 +27,13 @@ class OffenseAgent(ReflexCaptureAgent):
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
         self.introspection = False
+        self.currentSearchFood = None
+        self.lastPos = None
+        self.foodPenalty = 0
+
+        self.dangerousFood = []
+
+        self.walls = None
 
     def simpleEval(self, gameState, action, introspection = False):
         """
@@ -146,6 +153,49 @@ class OffenseAgent(ReflexCaptureAgent):
 
         return (minScore, worstAction)
 
+    def evaluateFood(self, gameState, pos):
+        foodList = self.getFood(gameState).asList()
+        bestDist = 999999
+        bestFood = None
+
+        if self.currentSearchFood is not None and self.lastPos is not None:
+            oldPathDist = self.getMazeDistance(self.lastPos, self.currentSearchFood)
+            currentPathDist = self.getMazeDistance(pos, self.currentSearchFood)
+
+            if pos is self.lastPos:
+                self.foodPenalty += 1
+
+            if currentPathDist > oldPathDist:
+                self.foodPenalty += 5
+
+        if self.foodPenalty > 4:
+            self.dangerousFood.append(self.currentSearchFood)
+            self.currentSearchFood = None
+            self.foodPenalty = 0
+            # print("update dangerousFood: ", self.dangerousFood)
+
+        if self.currentSearchFood is None:
+            for food in foodList:
+                # check if current food is not considered dangerous
+                if food not in self.dangerousFood:
+                    isFaraway = True
+
+                    # make sure the food pellet is not close to a dangerous one
+                    for dangerFood in self.dangerousFood:
+                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 3:
+                            isFaraway = False
+
+                    # the next food pellet is far enough away that we can count it
+                    if isFaraway is True:
+                        dist = self.getMazeDistance(pos, food)
+
+                        if dist < bestDist:
+                            bestDist = dist
+                            bestFood = food
+
+        # print("bestFood: ", bestFood)
+        self.currentSearchFood = bestFood
+
     def getFeatures(self, oldState, action):
         # Made score take difference rather than the new score only
         # Using old positions of enemy food
@@ -159,10 +209,29 @@ class OffenseAgent(ReflexCaptureAgent):
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
+        oldPos = oldState.getAgentState(self.index).getPosition()
 
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if (len(enemyFood) > 0):
+            self.evaluateFood(oldState, oldPos)
+
+            if (self.currentSearchFood is None):
+                # print("refresh")
+                self.dangerousFood = []
+                self.evaluateFood(oldState, oldPos)
+
+            if (self.currentSearchFood is not None):
+                minDistance = self.getMazeDistance(newPos, self.currentSearchFood)
+                # print("current food: ", self.currentSearchFood)
+                # print("min distance: ", minDistance)
+
+                # Individual food distances are a bit irrelevant from far away
+                features['distanceToFood'] = minDistance ** 0.7
+
+            else:
+                print("no food found")
+            
             enemyFoodDist = self.minDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist ** 0.7
