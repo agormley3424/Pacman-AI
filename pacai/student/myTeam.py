@@ -511,9 +511,7 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         return ourWeights
 
-def createTeam(firstIndex, secondIndex, isRed,
-        first = StrategyAgentA,
-        second = StrategyAgentB):
+def createTeam(firstIndex, secondIndex, isRed):
     """
     This function should return a list of two agents that will form the capture team,
     initialized using firstIndex and secondIndex as their agent indexed.
@@ -521,8 +519,8 @@ def createTeam(firstIndex, secondIndex, isRed,
     and will be False if the blue team is being created.
     """
 
-    # firstAgent = reflection.qualifiedImport(first)
-    # secondAgent = reflection.qualifiedImport(second)
+    firstAgent = StrategyAgentA
+    secondAgent = StrategyAgentB
 
     return [
         StrategyAgentA(firstIndex),
