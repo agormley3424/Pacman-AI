@@ -317,21 +317,22 @@ class OffenseAgent(ReflexCaptureAgent):
 
             if not self.simulatedIntrospection:
                 features['gonnaDie'] = 1 if self.gonnaDie(oldState, newState, 1, 1, index) else 0
+                self.simulatedIntrospection = False
 
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'successorScore': 100,
+            'newStateScore': 100,
             'distanceToFood': -5,
             'distanceToCapsule': -7,
-            'danger': -90,
             'distToAvgFood': -0.1,
+            'distToBrave': 0,
             'onCapsule': 100000,
-            'distToScared': 1,
+            'distToScared': 10,
             'eatenGhost': 10000,
             'onDefense': -10,
-            'gonnaDie': -1000
+            'gonnaDie': -10
         }
 
         return ourWeights
