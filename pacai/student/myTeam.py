@@ -33,6 +33,7 @@ class OffenseAgent(ReflexCaptureAgent):
         self.epsilon = 0 #Random exploration probability
         self.discount = 0.9 #Discounted reward rate, ???
         self.weights = counter.Counter()
+        self.weights['distanceToFood'] = -10
         #self.initWeights()
         self.features = [
             'newStateScore',
@@ -293,7 +294,6 @@ class OffenseAgent(ReflexCaptureAgent):
             if not self.introspection:
                 features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0]
                 self.introspection = False
-
         return features
 
     def getLegalActions(self, state):
