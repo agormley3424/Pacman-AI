@@ -73,7 +73,7 @@ class StrategyAgentA(ReflexCaptureAgent):
             if currentPathDist > oldPathDist:
                 self.foodPenalty += 5
 
-        if self.foodPenalty > 5:
+        if self.foodPenalty > 4:
             self.dangerousFood.append(self.currentSearchFood)
             self.currentSearchFood = None
             self.foodPenalty = 0
@@ -87,7 +87,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
                     # make sure the food pellet is not close to a dangerous one
                     for dangerFood in self.dangerousFood:
-                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 5:
+                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 3:
                             isFaraway = False
 
                     # the next food pellet is far enough away that we can count it
@@ -266,7 +266,7 @@ class StrategyAgentA(ReflexCaptureAgent):
     def getWeights(self, gameState, action):
         ourWeights = {
             'successorScore': 10,
-            'distanceToFood': -5.5,
+            'distanceToFood': -6,
             'distanceToCapsule': -8,
             'danger': -100,
             'distToAvgFood': -0.1,
