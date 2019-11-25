@@ -205,6 +205,8 @@ class OffenseAgent(ReflexCaptureAgent):
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
+        walls = newState.getWalls()
+        area = walls.getWidth() * walls.getHeight()
 
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
@@ -224,13 +226,13 @@ class OffenseAgent(ReflexCaptureAgent):
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
             features['distToAvgFood'] = (abs(newPos[0] - averageFood[0])
-                                         + abs(newPos[1] - averageFood[1])) ** 1.2
+                                         + abs(newPos[1] - averageFood[1])) ** 1.2 / area
 
         if (enemyStates[0].isBraveGhost()) and (enemyStates[1].isBraveGhost()):
             enemyCapsules = self.getCapsules(oldState)
 
             if (len(enemyCapsules) > 0):
-                capsuleDist = self.minDistance(enemyCapsules, newPos)
+                capsuleDist = self.minDistance(enemyCapsules, newPos) / area
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
@@ -292,7 +294,8 @@ class OffenseAgent(ReflexCaptureAgent):
                 features['killedbyGhost'] = 1
 
             if not self.introspection:
-                features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0]
+                features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0] / area
+                print(features['minMaxEstimate'])
                 self.introspection = False
         return features
 
@@ -403,7 +406,7 @@ class OffenseAgent(ReflexCaptureAgent):
             qValue = self.getQValue(state, a)
             if maxVal == qValue:
                 bestAction = random.choice([bestAction, a])
-            elif maxVal < qValue:
+            if maxVal < qValue:
                 bestAction = a
                 maxVal = qValue
         return bestAction
