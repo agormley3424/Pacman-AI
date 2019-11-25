@@ -27,6 +27,14 @@ class StrategyAgentA(ReflexCaptureAgent):
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
 
+        self.currentSearchFood = None
+        self.lastPos = None
+        self.foodPenalty = 0
+
+        self.dangerousFood = []
+
+        self.walls = None
+
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
@@ -50,7 +58,53 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
+    def evaluateFood(self, gameState, pos):
+        foodList = self.getFood(gameState).asList()
+        bestDist = 999999
+        bestFood = None
+
+        if self.currentSearchFood is not None and self.lastPos is not None:
+            oldPathDist = self.getMazeDistance(self.lastPos, self.currentSearchFood)
+            currentPathDist = self.getMazeDistance(pos, self.currentSearchFood)
+
+            if pos is self.lastPos:
+                self.foodPenalty += 1
+
+            if currentPathDist > oldPathDist:
+                self.foodPenalty += 5
+
+        if self.foodPenalty > 5:
+            self.dangerousFood.append(self.currentSearchFood)
+            self.currentSearchFood = None
+            self.foodPenalty = 0
+            # print("update dangerousFood: ", self.dangerousFood)
+
+        if self.currentSearchFood is None:
+            for food in foodList:
+                # check if current food is not considered dangerous
+                if food not in self.dangerousFood:
+                    isFaraway = True
+
+                    # make sure the food pellet is not close to a dangerous one
+                    for dangerFood in self.dangerousFood:
+                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 5:
+                            isFaraway = False
+
+                    # the next food pellet is far enough away that we can count it
+                    if isFaraway is True:
+                        dist = self.getMazeDistance(pos, food)
+
+                        if dist < bestDist:
+                            bestDist = dist
+                            bestFood = food
+
+        # print("bestFood: ", bestFood)
+        self.currentSearchFood = bestFood
+
     def getFeatures(self, gameState, action):
+        if (self.walls is None):
+            self.walls = gameState.getWalls().asList()
+
         self.updateExpectation(gameState)
 
         features = counter.Counter()
@@ -65,11 +119,29 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         # This should always be True, but better safe than sorry.
         if (len(foodList) > 0):
+            oldPos = gameState.getAgentState(self.index).getPosition()
+            
             myPos = successor.getAgentState(self.index).getPosition()
-            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            # minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            # features['distanceToFood'] = minDistance ** 0.7
 
-            # Individual food distances are a bit irrelevant from far away
-            features['distanceToFood'] = minDistance ** 0.7
+            self.evaluateFood(gameState, oldPos)
+
+            if (self.currentSearchFood is None):
+                # print("refresh")
+                self.dangerousFood = []
+                self.evaluateFood(gameState, oldPos)
+
+            if (self.currentSearchFood is not None):
+                minDistance = self.getMazeDistance(myPos, self.currentSearchFood)
+                # print("current food: ", self.currentSearchFood)
+                # print("min distance: ", minDistance)
+
+                # Individual food distances are a bit irrelevant from far away
+                features['distanceToFood'] = minDistance ** 0.7
+
+            else:
+                print("no food found")
 
             sumFoodX = 0
             sumFoodY = 0
@@ -78,6 +150,9 @@ class StrategyAgentA(ReflexCaptureAgent):
                 sumFoodY += food[1]
 
             averageFood = [sumFoodX / len(foodList), sumFoodY / len(foodList)]
+            
+            if (len(foodList) < len(self.getFood(gameState).asList())):
+                self.dangerousFood = []
 
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
@@ -100,6 +175,32 @@ class StrategyAgentA(ReflexCaptureAgent):
                     features['onCapsule'] = 1
 
         myPos = myState.getPosition()
+
+
+        if (self.walls is not None):
+            openness = 0
+            otherPos = (myPos[0] + 1, myPos[1])
+
+            if (otherPos not in self.walls):
+                openness += 1
+
+            otherPos = (myPos[0] - 1, myPos[1])
+            
+            if (otherPos not in self.walls):
+                openness += 1
+
+            otherPos = (myPos[0], myPos[1] + 1)
+
+            if (otherPos not in self.walls):
+                openness += 1
+
+            otherPos = (myPos[0], myPos[1] - 1)
+
+            if (otherPos not in self.walls):
+                openness += 1
+
+            features['openness'] = openness ** 1.05
+            # print(openness)
 
         # Computes whether we're on defense (1) or offense (0).
         features['onDefense'] = 1
@@ -158,19 +259,22 @@ class StrategyAgentA(ReflexCaptureAgent):
             if (len(scared) < scaredNum):
                 features['eatenGhost'] = 1
 
+        self.lastPos = gameState.getAgentState(self.index).getPosition()
+
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'successorScore': 100,
-            'distanceToFood': -5,
-            'distanceToCapsule': -7,
-            'danger': -90,
+            'successorScore': 10,
+            'distanceToFood': -5.5,
+            'distanceToCapsule': -8,
+            'danger': -100,
             'distToAvgFood': -0.1,
             'onCapsule': 100000,
-            'distToScared': 1,
+            'distToScared': 0.1,
             'eatenGhost': 10000,
-            'onDefense': -10,
+            'onDefense': -1,
+            'openness': 1,
         }
 
         return ourWeights
@@ -227,7 +331,7 @@ class StrategyAgentB(ReflexCaptureAgent):
                 newValue = (lastValue * defenseLerp) + (0 * (1 - defenseLerp))
                 self.offenseDetector[index] = newValue
 
-            if enemyPos[0] > 12 and enemyPos[0] < 18:
+            if enemyPos[0] > 13 and enemyPos[0] < 17:
                 lastValue = self.offenseDetector[index]
                 newValue = (lastValue * mediumLerp) + (1 * (1 - mediumLerp))
                 self.offenseDetector[index] = newValue
@@ -397,19 +501,19 @@ class StrategyAgentB(ReflexCaptureAgent):
         ourWeights = {
             'numInvaders': -1000,
             'notOnDefense': -200,
-            'invaderDistance': -8,
+            'invaderDistance': -9,
             'runAway': -100,
-            'targetedFoodDist': -21,
-            'targetedCapsuleDist': -19,
-            'stop': -0.5,
-            'reverse': -1
+            'targetedFoodDist': -22,
+            'targetedCapsuleDist': -17,
+            'stop': -10,
+            'reverse': -0.1
         }
 
         return ourWeights
 
 def createTeam(firstIndex, secondIndex, isRed,
-        first = 'pacai.student.myTeam.StrategyAgentA',
-        second = 'pacai.student.myTeam.StrategyAgentB'):
+        first = StrategyAgentA,
+        second = StrategyAgentB):
     """
     This function should return a list of two agents that will form the capture team,
     initialized using firstIndex and secondIndex as their agent indexed.
@@ -417,10 +521,10 @@ def createTeam(firstIndex, secondIndex, isRed,
     and will be False if the blue team is being created.
     """
 
-    firstAgent = reflection.qualifiedImport(first)
-    secondAgent = reflection.qualifiedImport(second)
+    # firstAgent = reflection.qualifiedImport(first)
+    # secondAgent = reflection.qualifiedImport(second)
 
     return [
-        firstAgent(firstIndex),
-        secondAgent(secondIndex),
+        StrategyAgentA(firstIndex),
+        StrategyAgentB(secondIndex),
     ]
