@@ -2,6 +2,8 @@ from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+from pacai.util import probability
+import random
 # from pacai.util import probability
 # import random
 
@@ -27,6 +29,50 @@ class OffenseAgent(ReflexCaptureAgent):
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
         self.introspection = False
+        self.alpha = 0 #Learning rate
+        self.epsilon = 0 #Random exploration probability
+        self.discount = 0.9 #Discounted reward rate, ???
+        self.weights = counter.Counter()
+        self.initWeights()
+        self.features = [
+            'newStateScore',
+            'distanceToFood',
+            'distanceToCapsule',
+            'distToAvgFood',
+            'distToBrave',
+            'onCapsule',
+            'distToScared',
+            'eatenGhost',
+            'onDefense',
+            'minMaxEstimate'
+        ]
+
+    def initWeights(self):
+        self.weights['newStateScore'] = 100
+        self.weights['distanceToFood'] = -5
+        self.weights['distanceToCapsule'] = -7
+        self.weights['distToAvgFood'] = -0.1
+        self.weights['distToBrave'] = -90
+        self.weights['onCapsule'] = 1000000
+        self.weights['distToScared'] = 10
+        self.weights['eatenGhost'] = 10000
+        self.weights['onDefense'] = -10
+        self.weights['minMaxEstimate'] = 1
+
+    def chooseAction(self, state):
+        if self.getLegalActions(state) == 0:
+            return None
+        elif probability.flipCoin(self.epsilon):
+            action = random.choice(self.getLegalActions(state))
+        else:
+            action = self.getPolicy(state)
+        nextState = state.generateSuccessor(self.index, action)
+        reward = self.getReward(state, nextState)
+        self.update(state, action, nextState, reward)
+        return action
+
+    def getWeights(self, gameState, action):
+        return self.weights
 
     def simpleEval(self, gameState, action, introspection = False):
         """
@@ -34,8 +80,7 @@ class OffenseAgent(ReflexCaptureAgent):
         """
         self.introspection = introspection
         features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-        return features['distToBrave'] * weights['distToBrave']
+        return features['distToBrave'] * self.weights['distToBrave']
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -251,19 +296,144 @@ class OffenseAgent(ReflexCaptureAgent):
 
         return features
 
-    def getWeights(self, gameState, action):
-        ourWeights = {
-            'newStateScore': 100,
-            'distanceToFood': -5,
-            'distanceToCapsule': -7,
-            'distToAvgFood': -0.1,
-            'distToBrave': -90,
-            'onCapsule': 100000,
-            'distToScared': 10,
-            'eatenGhost': 10000,
-            'onDefense': -10,
-            'minMaxEstimate': 1
-        }
+    def getLegalActions(self, state):
+        """
+        Input: A CaptureGameState
+        Returns a list containing all legal actions possible from this state for this agent.
+        
+        Output: A list of actions (Strings)
+        """
+        return state.getLegalActions(self.index)
+
+    def getOpponentPositions(self, state):
+        scaredEnemies = []
+        braveEnemies = []
+        enemyPacPositions = []
+        for o in self.getOpponents(state):
+            enemy = state.getAgentState(o)
+            if enemy.isGhost():
+                if enemy.isScared():
+                    scaredEnemies.append(enemy.getPosition())
+                else:
+                    braveEnemies.append(enemy.getPosition())
+            else:
+                enemyPacPositions.append(enemy.getPosition())
+
+        return scaredEnemies, braveEnemies, enemyPacPositions
+
+    def getAgentPosition(self, state):
+        return state.getAgentPosition(self.index)
+
+    def getFriendPosition(self, state):
+        friendIndex = None
+        for i in self.getTeam(state):
+            if i != self.index:
+                friendIndex = i
+        return state.getAgentPosition(friendIndex)
+
+    def getReward(self, oldState, newState):
+        newScore = self.getScore(newState)
+        oldScore = self.getScore(oldState)
+
+        agentState = newState.getAgentState(self.index)
+        agentPosition = self.getAgentPosition(newState)
+        ghostTuple = self.getOpponentPositions(oldState)
+        scaredEnemies = ghostTuple[0]
+        braveEnemies = ghostTuple[1]
+        enemyPacPositions = ghostTuple[2]
+        combatValue = 0
+        if agentState.isGhost():
+            if agentState.isScared():
+                if agentPosition in enemyPacPositions:
+                    combatValue = -5
+            else:
+                if agentPosition in enemyPacPositions:
+                    combatValue = 3
+        else:
+            if agentPosition in scaredEnemies:
+                combatValue = 3
+            elif agentPosition in braveEnemies:
+                combatValue = -5
+        reward = newScore - oldScore + combatValue
+        return reward
+
+    def getQValue(self, state, action):
+        """
+        Input: A CaptureGameState and action (String)
+        Creates a feature vector from the state and calculates a Q value by summing
+        the weighted features.
+        Output: A Q-value (signed int)
+        """
+        featureCounter = self.getFeatures(state, action)
+        features = featureCounter.sortedKeys()
+        qValue = 0
+        for f in featureCounter:
+            qValue += self.weights[f] * featureCounter[f]
+        if qValue == float("-inf"):
+            return None
+        return qValue
+
+    def getValue(self, state):
+        """
+        Input: A CaptureGameState
+        Looks through all legal actions for a given state and finds that which corresponds to the
+        highest Q-value, then returns that value.
+        Returns 0 if there are no legal actions.
+        Output: State value (signed int)
+        """
+        if len(self.getLegalActions(state)) == 0:
+            return 0.0
+        value = float("-inf")
+        for a in self.getLegalActions(state):
+            qVal = self.getQValue(state, a)
+            value = max(value, qVal)
+        return value
+
+    def getPolicy(self, state):
+        """
+        Input: A CaptureGameState
+        Look through all legal actions for a given state and finds that which corresponds to the
+        highest Q-value, then returns that action.
+        Returns None if ther are no legal actions.
+        Output: An action (String) or None
+        """
+        maxVal = float("-inf")
+        bestAction = None
+        for a in self.getLegalActions(state):
+            qValue = self.getQValue(state, a)
+            if maxVal == qValue:
+                bestAction = random.choice([bestAction, a])
+            elif maxVal < qValue:
+                bestAction = a
+                maxVal = qValue
+        return bestAction
+
+    def update(self, state, action, nextState, reward):
+        """
+        Input: A state, action, successor state, and reward (signed int)
+        Looks at the difference between the values of the current and successor state, multiplies
+        it to each successor state feature value and adds the total to the running average of
+        each weight.
+        Output: None
+        """
+        #The discount makes a positive number smaller, but makes a negative number larger (resolved by setting discount to 1/discount if nextValue is negative)
+        #Weight for minimum distance is becoming a gigantic negative number, overshadowing all other features
+        featureCounter = self.getFeatures(state, action)
+        features = featureCounter.sortedKeys()
+        nextValue = self.getValue(nextState)
+        if nextValue < 0:
+            discount = 1 / self.discount
+        else:
+            discount = self.discount
+        currentQ = self.getQValue(state, action)
+        sample = (reward + discount * nextValue) - currentQ
+        for f in features:
+            self.weights[f] = self.weights[f] + self.alpha * (sample) * featureCounter[f]
+
+    def final(self, gameState):
+        print(self.index)
+        for f in self.features:
+            print(f + ' ' + str(self.weights[f]))
 
         return ourWeights
 
