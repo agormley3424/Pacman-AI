@@ -28,14 +28,14 @@ class OffenseAgent(ReflexCaptureAgent):
         self.offenseDetector = [1, 1]
         self.introspection = False
 
-    def evaluate(self, gameState, action, introspection = False):
+    def simpleEval(self, gameState, action, introspection = False):
         """
         Computes a linear combination of features and feature weights.
         """
         self.introspection = introspection
         features = self.getFeatures(gameState, action)
         weights = self.getWeights(gameState, action)
-        return features * weights
+        return features['distToBrave'] * weights['distToBrave']
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -78,7 +78,7 @@ class OffenseAgent(ReflexCaptureAgent):
 
         # end search if game is over or max tree depth has been reached
         if (levelCount == treeDepth * 4) or (gameState.isOver()):
-            return self.evaluate(gameState, Directions.STOP, True), Directions.STOP
+            return self.simpleEval(gameState, Directions.STOP, True), Directions.STOP
 
         if (agentIndex > len(self.getOpponents(gameState)) + len(self.getTeam(gameState)) - 1):
             agentIndex = 0
@@ -115,7 +115,7 @@ class OffenseAgent(ReflexCaptureAgent):
 
         # end search if game is over
         if (levelCount == treeDepth * 4) or (gameState.isOver()):
-            return self.evaluate(gameState, Directions.STOP, True), Directions.STOP
+            return self.simpleEval(gameState, Directions.STOP, True), Directions.STOP
 
         numAgents = gameState.getNumAgents()
 
@@ -213,12 +213,9 @@ class OffenseAgent(ReflexCaptureAgent):
                 else:
                     scaredEnemies.append(a.getPosition())
 
-            features['distToBrave'] = 0
-            features['distToScared'] = 0
-
             # The agent should be wary of ghosts within a tight radius.
             if len(braveEnemies) > 0:
-                features['distToBrave'] = self.minDistance(braveEnemies, newPos)
+                features['distToBrave'] = self.minDistance(braveEnemies, newPos) ** -3
 
             if (len(scaredEnemies) > 0):
                 minDist = float("inf")
@@ -243,8 +240,6 @@ class OffenseAgent(ReflexCaptureAgent):
                     oldBravies.append(s.getPosition())
 
             # Reward the agent for eating a ghost.
-            features['eatenGhost'] = 0
-            features['killedbyGhost'] = 0
             if (newPos in oldScaredies):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
@@ -252,21 +247,22 @@ class OffenseAgent(ReflexCaptureAgent):
 
             if not self.introspection:
                 features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0]
+                self.introspection = False
 
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'successorScore': 100,
+            'newStateScore': 100,
             'distanceToFood': -5,
             'distanceToCapsule': -7,
-            'danger': -90,
             'distToAvgFood': -0.1,
+            'distToBrave': -90,
             'onCapsule': 100000,
-            'distToScared': 1,
+            'distToScared': 10,
             'eatenGhost': 10000,
             'onDefense': -10,
-            'minMaxEstimate': 10
+            'minMaxEstimate': 1
         }
 
         return ourWeights
