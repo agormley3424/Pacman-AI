@@ -73,6 +73,9 @@ class OffenseAgent(ReflexCaptureAgent):
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
 
+    def weightedMinDistance(self, foodPositions, ghostPositions):
+        minDist = float("inf")
+
     def evaluateFood(self, gameState, pos):
         foodList = self.getFood(gameState).asList()
         bestDist = 999999
