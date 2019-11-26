@@ -73,86 +73,6 @@ class OffenseAgent(ReflexCaptureAgent):
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
 
-    def abMaxValue(self, gameState, treeDepth, agentIndex, alpha, beta, levelCount):
-        if agentIndex > max(self.getOpponents(gameState) + self.getTeam(gameState)):
-            agentIndex = min(self.getOpponents(gameState) + self.getTeam(gameState))
-
-        legalActions = gameState.getLegalActions(agentIndex)
-
-        # remove STOP as a direction for pac-man
-        if (Directions.STOP in legalActions):
-            legalActions.remove(Directions.STOP)
-
-        # end search if game is over or max tree depth has been reached
-        if (levelCount == treeDepth * 4) or (gameState.isOver()):
-            return self.simpleEval(gameState, Directions.STOP, True), Directions.STOP
-
-        if (agentIndex > len(self.getOpponents(gameState)) + len(self.getTeam(gameState)) - 1):
-            agentIndex = 0
-
-        # max value
-        maxScore = float("-inf")
-        bestAction = Directions.STOP
-        
-        for action in legalActions:
-            scorePair = None
-            # (score, action) pair
-            scorePair = self.abMinValue(gameState.generateSuccessor(agentIndex, action), treeDepth,
-                                                                    agentIndex + 1, alpha, beta,
-                                                                    levelCount + 1)
-
-            # update best action and score
-            if (scorePair[0] > maxScore):
-                maxScore = scorePair[0]
-
-            # return if score exceeeds bounds
-            if (maxScore >= beta):
-                return (maxScore, bestAction)
-
-            # update alpha
-            alpha = max(alpha, maxScore)
-
-        return (maxScore, bestAction)
-
-    def abMinValue(self, gameState, treeDepth, agentIndex, alpha, beta, levelCount):
-        if agentIndex > max(self.getOpponents(gameState) + self.getTeam(gameState)):
-            agentIndex = min(self.getOpponents(gameState) + self.getTeam(gameState))
-
-        legalActions = gameState.getLegalActions(agentIndex)
-
-        # end search if game is over
-        if (levelCount == treeDepth * 4) or (gameState.isOver()):
-            return self.simpleEval(gameState, Directions.STOP, True), Directions.STOP
-
-        numAgents = gameState.getNumAgents()
-
-        # min value
-        minScore = float("inf")
-        worstAction = Directions.STOP
-
-        # iterate through all possible actions
-        for action in legalActions:
-            scorePair = None
-
-            # (score, action) pair
-            # continue iterating through ghosts or search pac-man's actions next
-            scorePair = self.abMinValue(gameState.generateSuccessor(agentIndex, action),
-                                        treeDepth, agentIndex + 1, alpha, beta, levelCount + 1)
-
-            # update worst action and score
-            if (scorePair[0] < minScore):
-                minScore = scorePair[0]
-                worstAction = action
-
-            # return if score exceeds bounds
-            if (minScore <= alpha):
-                return(minScore, worstAction)
-
-            # update beta
-            beta = min(beta, minScore)
-
-        return (minScore, worstAction)
-
     def evaluateFood(self, gameState, pos):
         foodList = self.getFood(gameState).asList()
         bestDist = 999999
@@ -313,10 +233,6 @@ class OffenseAgent(ReflexCaptureAgent):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
-
-            if not self.introspection:
-                features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0]
-                self.introspection = False
 
         return features
 
