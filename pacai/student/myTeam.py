@@ -1,4 +1,4 @@
-from pacai.util import reflection
+# from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
@@ -120,7 +120,7 @@ class StrategyAgentA(ReflexCaptureAgent):
         # This should always be True, but better safe than sorry.
         if (len(foodList) > 0):
             oldPos = gameState.getAgentState(self.index).getPosition()
-            
+
             myPos = successor.getAgentState(self.index).getPosition()
             # minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             # features['distanceToFood'] = minDistance ** 0.7
@@ -150,7 +150,7 @@ class StrategyAgentA(ReflexCaptureAgent):
                 sumFoodY += food[1]
 
             averageFood = [sumFoodX / len(foodList), sumFoodY / len(foodList)]
-            
+
             if (len(foodList) < len(self.getFood(gameState).asList())):
                 self.dangerousFood = []
 
@@ -176,7 +176,6 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         myPos = myState.getPosition()
 
-
         if (self.walls is not None):
             openness = 0
             otherPos = (myPos[0] + 1, myPos[1])
@@ -185,7 +184,7 @@ class StrategyAgentA(ReflexCaptureAgent):
                 openness += 1
 
             otherPos = (myPos[0] - 1, myPos[1])
-            
+
             if (otherPos not in self.walls):
                 openness += 1
 
@@ -519,8 +518,8 @@ def createTeam(firstIndex, secondIndex, isRed):
     and will be False if the blue team is being created.
     """
 
-    firstAgent = StrategyAgentA
-    secondAgent = StrategyAgentB
+    # firstAgent = StrategyAgentA
+    # secondAgent = StrategyAgentB
 
     return [
         StrategyAgentA(firstIndex),
