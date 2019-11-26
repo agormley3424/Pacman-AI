@@ -41,8 +41,7 @@ class OffenseAgent(ReflexCaptureAgent):
         """
         self.introspection = introspection
         features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-        return features['distToBrave'] * weights['distToBrave']
+        return features['distToBrave']
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -313,24 +312,26 @@ class OffenseAgent(ReflexCaptureAgent):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
-
-            if not self.introspection:
-                features['minMaxEstimate'] = self.abMaxValue(newState, 1, self.index, float("inf"), float("-inf"), 1)[0]
+            
+            if not self.introspection and not oldState.isOver() and not newState.isOver():
+                features['minMaxEstimate'] = self.abMaxValue(newState, 3, self.index, float("inf"), float("-inf"), 1)[0]
                 self.introspection = False
+            
 
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'newStateScore': 100,
-            'distanceToFood': -5,
-            'distanceToCapsule': -7,
+            'newStateScore': 10,
+            'distanceToFood': -6,
+            'distanceToCapsule': -8,
             'distToAvgFood': -0.1,
-            'distToBrave': -90,
-            'onCapsule': 100000,
-            'distToScared': 10,
+            'distToBrave': -100,
+            'onCapsule': 100,
+            'distToScared': 0.1,
             'eatenGhost': 10000,
-            'onDefense': -10,
+            'onDefense': -1,
+            'openness': 1,
             'minMaxEstimate': 1
         }
 
