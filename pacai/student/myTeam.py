@@ -231,7 +231,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             # The agent should be wary of ghosts within a tight radius.
             if (len(dists)) > 0:
-                features['danger'] = (min(dists)) ** -3
+                features['danger'] = (min(dists)) ** -3.5
 
             if (len(scared) > 0):
                 smallestDist = 999999
@@ -268,7 +268,7 @@ class StrategyAgentA(ReflexCaptureAgent):
             'successorScore': 10,
             'distanceToFood': -6,
             'distanceToCapsule': -8,
-            'danger': -100,
+            'danger': -90,
             'distToAvgFood': -0.1,
             'onCapsule': 100000,
             'distToScared': 0.1,
