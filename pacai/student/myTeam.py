@@ -2,6 +2,7 @@ from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+import random
 # from pacai.util import probability
 # import random
 
@@ -35,14 +36,20 @@ class OffenseAgent(ReflexCaptureAgent):
 
         self.walls = None
 
-    def simpleEval(self, gameState, action, introspection = False):
+    def chooseAction(self, gameState):
         """
-        Computes a linear combination of features and feature weights.
+        Picks among the actions with the highest return from `ReflexCaptureAgent.evaluate`.
         """
-        self.introspection = introspection
-        features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-        return features['distToBrave'] * weights['distToBrave']
+
+        actions = gameState.getLegalActions(self.index)
+        actions.remove('Stop')
+
+        values = [self.evaluate(gameState, a) for a in actions]
+
+        maxValue = max(values)
+        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+
+        return random.choice(bestActions)
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -73,8 +80,67 @@ class OffenseAgent(ReflexCaptureAgent):
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
 
-    def weightedMinDistance(self, foodPositions, ghostPositions):
+    def openness(self, walls, pointPos):
+        x, y = pointPos
+        openWest = 0
+        while not walls[x][y]:
+            x -= 1
+            openWest += 1
+
+        x, y = pointPos
+        openNorth = 0
+        while not walls[x][y]:
+            y += 1
+            openNorth += 1
+
+        x, y = pointPos
+        openEast = 0
+        while not walls[x][y]:
+            x += 1
+            openEast += 1
+
+        x, y = pointPos
+        openSouth = 0
+        while not walls[x][y]:
+            y -= 1
+            openSouth += 1
+
+        cardinalList = [openWest, openNorth, openEast, openSouth]
+        cardinalList.remove(max(cardinalList))
+
+        return sum(cardinalList) / 3
+    """
+    def weightedMinDistance(self, ourPosition, foodPositions, ghostPositions, walls):
         minDist = float("inf")
+        minEnemyDist = float("inf")
+        print("...")
+        minPoint = None
+        for p in foodPositions:
+            foodDist = self.getMazeDistance(ourPosition, p)
+            enemyDist = 0
+            if len(ghostPositions) > 0:
+                enemyDist = self.minDistance(ghostPositions, p)
+            if enemyDist == 0:
+                enemyDist = 0.000000000000000001
+            if 0.0000001 * foodDist / (enemyDist + self.openness(walls, p)) < minDist:
+                minDist = 0.0000001 * foodDist / (enemyDist + self.openness(walls, p))
+                minPoint = p
+        print(minPoint)
+        return minDist
+    """
+
+    def weightedMinDistance(self, ourPosition, foodPositions, ghostPositions, walls):
+        minDist = float("inf")
+        minEnemyDist = float("inf")
+        minPoint = None
+        for p in foodPositions:
+            foodDist = self.getMazeDistance(ourPosition, p) / 200
+            open = self.openness(walls, p)
+            foodDist /= open
+            minDist = min(minDist, foodDist)
+        return minDist
+
+    # Alternate plan: Check each point to see if the distance to it and back is greater than the distance from the nearest ghost to you
 
     def evaluateFood(self, gameState, pos):
         foodList = self.getFood(gameState).asList()
@@ -116,9 +182,6 @@ class OffenseAgent(ReflexCaptureAgent):
                             bestDist = dist
                             bestFood = food
 
-        # print("bestFood: ", bestFood)
-        self.currentSearchFood = bestFood
-
     def getFeatures(self, oldState, action):
         # Made score take difference rather than the new score only
         # Using old positions of enemy food
@@ -130,34 +193,18 @@ class OffenseAgent(ReflexCaptureAgent):
         newState = self.getSuccessor(oldState, action)
         newAgentState = newState.getAgentState(self.index)
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
-        enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
+        bravePositions = [s.getPosition() for s in enemyStates if s.isBraveGhost()]
+        enemyFood = self.getFood(oldState).asList()
         newPos = newState.getAgentState(self.index).getPosition()
         oldPos = oldState.getAgentState(self.index).getPosition()
+        walls = oldState.getWalls()
 
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if (len(enemyFood) > 0):
-            self.evaluateFood(oldState, oldPos)
-
-            if (self.currentSearchFood is None):
-                # print("refresh")
-                self.dangerousFood = []
-                self.evaluateFood(oldState, oldPos)
-
-            if (self.currentSearchFood is not None):
-                minDistance = self.getMazeDistance(newPos, self.currentSearchFood)
-                # print("current food: ", self.currentSearchFood)
-                # print("min distance: ", minDistance)
-
-                # Individual food distances are a bit irrelevant from far away
-                features['distanceToFood'] = minDistance ** 0.7
-
-            else:
-                print("no food found")
-            
-            enemyFoodDist = self.minDistance(enemyFood, newPos)
+            enemyFoodDist = self.weightedMinDistance(newPos, enemyFood, bravePositions, walls)
             # Individual food distances are a bit irrelevant from far away
-            features['distanceToFood'] = enemyFoodDist ** 0.7
+            features['distanceToFood'] = enemyFoodDist
 
             sumFoodX = 0
             sumFoodY = 0
@@ -241,16 +288,15 @@ class OffenseAgent(ReflexCaptureAgent):
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'newStateScore': 100,
-            'distanceToFood': -5,
-            'distanceToCapsule': -7,
-            'distToAvgFood': -0.1,
-            'distToBrave': -90,
-            'onCapsule': 100000,
-            'distToScared': 10,
-            'eatenGhost': 10000,
-            'onDefense': -10,
-            'minMaxEstimate': 1
+            'newStateScore': 0,
+            'distanceToFood': -50,
+            'distanceToCapsule': 0,
+            'distToAvgFood': 0,
+            'distToBrave': -100,
+            'onCapsule': 0,
+            'distToScared': 0,
+            'eatenGhost': 0,
+            'onDefense': 0,
         }
 
         return ourWeights
