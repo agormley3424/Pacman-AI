@@ -33,6 +33,8 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         self.dangerousFood = []
 
+        self.riskyFood = None
+
         self.walls = None
 
     def updateExpectation(self, gameState):
@@ -105,6 +107,39 @@ class StrategyAgentA(ReflexCaptureAgent):
         if (self.walls is None):
             self.walls = gameState.getWalls().asList()
 
+        if (self.riskyFood is None):
+            riskyFood = []
+
+            oldFoodList = self.getFood(gameState).asList()
+
+            for food in oldFoodList:
+                if (self.walls is not None):
+                    openness = 0
+                    otherPos = (food[0] + 1, food[1])
+
+                    if (otherPos not in self.walls):
+                        openness += 1
+
+                    otherPos = (food[0] - 1, food[1])
+
+                    if (otherPos not in self.walls):
+                        openness += 1
+
+                    otherPos = (food[0], food[1] + 1)
+
+                    if (otherPos not in self.walls):
+                        openness += 1
+
+                    otherPos = (food[0], food[1] - 1)
+
+                    if (otherPos not in self.walls):
+                        openness += 1
+
+                    if openness is 1:
+                        riskyFood.append(food)
+
+            self.riskyFood = riskyFood
+
         self.updateExpectation(gameState)
 
         features = counter.Counter()
@@ -113,6 +148,23 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         myState = successor.getAgentState(self.index)
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        nextPos = successor.getAgentState(self.index).getPosition()
+        
+        enemyDists = []
+        minEnemyDist = None
+
+        for a in enemies:
+            if a.isBraveGhost():
+                enemyDists.append(self.getMazeDistance(nextPos, a.getPosition()))
+
+        if len(enemyDists) > 0:
+            minEnemyDist = min([dist for dist in enemyDists])
+
+            """
+            if (minEnemyDist < 2):
+                # If the enemy is too close, don't consider eating nearby pellets.
+                features['successorScore'] = 0
+            """
 
         # Compute distance to the nearest food.
         foodList = self.getFood(successor).asList()
@@ -121,10 +173,28 @@ class StrategyAgentA(ReflexCaptureAgent):
         if (len(foodList) > 0):
             oldPos = gameState.getAgentState(self.index).getPosition()
 
-            myPos = successor.getAgentState(self.index).getPosition()
-            # minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-            # features['distanceToFood'] = minDistance ** 0.7
+            bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
 
+            features['distanceToFood'] = bestPathDist ** 0.7
+
+            """
+            bestPathDist = 999999
+
+            if (self.riskyFood is not None) and (minEnemyDist is not None):
+                if (minEnemyDist < 6):
+                    for food in foodList:
+                        if food not in self.riskyFood:
+                            thisFoodDist = self.getMazeDistance(nextPos, food)
+
+                            if thisFoodDist < bestPathDist:
+                                bestPathDist = thisFoodDist
+
+                else:
+                    bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
+
+            features['distanceToFood'] = bestPathDist ** 0.7
+            """
+            """
             self.evaluateFood(gameState, oldPos)
 
             if (self.currentSearchFood is None):
@@ -142,6 +212,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             else:
                 print("no food found")
+            """
 
             sumFoodX = 0
             sumFoodY = 0
@@ -156,15 +227,14 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
-            features['distToAvgFood'] = (abs(myPos[0] - averageFood[0])
-                                        + abs(myPos[1] - averageFood[1])) ** 1.2
+            features['distToAvgFood'] = (abs(nextPos[0] - averageFood[0])
+                                        + abs(nextPos[1] - averageFood[1])) ** 1.2
 
         if (enemies[0].isBraveGhost()) and (enemies[1].isBraveGhost()):
             capsuleList = self.getCapsules(successor)
 
             if (len(capsuleList) > 0):
-                myPos = successor.getAgentState(self.index).getPosition()
-                minDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+                minDistance = min([self.getMazeDistance(nextPos, capsule) for capsule in capsuleList])
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
@@ -198,7 +268,12 @@ class StrategyAgentA(ReflexCaptureAgent):
             if (otherPos not in self.walls):
                 openness += 1
 
-            features['openness'] = openness ** 1.05
+            if (minEnemyDist is not None) and (minEnemyDist < 2):
+                features['openness'] = (openness ** 1.1) - 1
+                # features['successorScore'] = 0
+
+            else:
+                features['openness'] = 0
             # print(openness)
 
         # Computes whether we're on defense (1) or offense (0).
@@ -230,7 +305,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             # The agent should be wary of ghosts within a tight radius.
             if (len(dists)) > 0:
-                features['danger'] = (min(dists)) ** -3.5
+                features['danger'] = (min(dists)) ** -3
 
             if (len(scared) > 0):
                 smallestDist = 999999
@@ -258,14 +333,22 @@ class StrategyAgentA(ReflexCaptureAgent):
             if (len(scared) < scaredNum):
                 features['eatenGhost'] = 1
 
-        self.lastPos = gameState.getAgentState(self.index).getPosition()
+        # Slightly discourage stalling and indecisiveness.
+        if (action == Directions.STOP):
+            features['stop'] = 1
+
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
+        if (action == rev):
+            features['reverse'] = 1
+
+        # self.lastPos = gameState.getAgentState(self.index).getPosition()
 
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'successorScore': 10,
-            'distanceToFood': -6,
+            'successorScore': 100,
+            'distanceToFood': -5,
             'distanceToCapsule': -8,
             'danger': -90,
             'distToAvgFood': -0.1,
@@ -273,7 +356,9 @@ class StrategyAgentA(ReflexCaptureAgent):
             'distToScared': 0.1,
             'eatenGhost': 10000,
             'onDefense': -1,
-            'openness': 1,
+            'openness': 0,
+            'stop': -10,
+            'reverse': 0
         }
 
         return ourWeights
@@ -500,10 +585,10 @@ class StrategyAgentB(ReflexCaptureAgent):
         ourWeights = {
             'numInvaders': -1000,
             'notOnDefense': -200,
-            'invaderDistance': -9,
+            'invaderDistance': -14,
             'runAway': -100,
-            'targetedFoodDist': -22,
-            'targetedCapsuleDist': -17,
+            'targetedFoodDist': -20,
+            'targetedCapsuleDist': -18,
             'stop': -10,
             'reverse': -0.1
         }
