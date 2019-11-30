@@ -658,7 +658,7 @@ def loadAgents(isRed, agentModule, textgraphics, args):
         indexAddend = 1
     indices = [2 * i + indexAddend for i in range(2)]
 
-    return createTeamFunction(indices[0], indices[1], isRed, **args)
+    return createTeamFunction(indices[0], indices[1], isRed)
 
 def replayGame(layout, agents, actions, display, length, redTeamName, blueTeamName):
     agents = [DummyAgent(index) for index in range(len(agents))]
@@ -725,7 +725,7 @@ def runGames(layout, agents, display, length, numGames, record, numTraining,
 
             logging.info("Game recorded to: '%s'." % (path))
 
-    if (numGames > 0):
+    if (numGames - numTraining > 0):
         scores = [game.state.getScore() for game in games]
         redWinRate = [s > 0 for s in scores].count(True) / float(len(scores))
         blueWinRate = [s < 0 for s in scores].count(True) / float(len(scores))

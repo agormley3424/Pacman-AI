@@ -12,7 +12,7 @@ from pacai.core.actions import Actions
 
 # States are CaptureGameStates
 
-class StrategyAgentA(ReflexCaptureAgent):
+class OffenseAgent(ReflexCaptureAgent):
     """
     This is an offense agent.
 
@@ -31,6 +31,23 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
+        self.introspection = False
+        self.currentSearchFood = None
+        self.lastPos = None
+        self.foodPenalty = 0
+
+        self.dangerousFood = []
+
+        self.walls = None
+
+    def simpleEval(self, gameState, action, introspection = False):
+        """
+        Computes a linear combination of features and feature weights.
+        """
+        self.introspection = introspection
+        features = self.getFeatures(gameState, action)
+        weights = self.getWeights(gameState, action)
+        return features['distToBrave'] * weights['distToBrave']
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -55,132 +72,192 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
-    def getFeatures(self, gameState, action):
-        self.updateExpectation(gameState)
+    def minDistance(self, positionList, originPoint):
+        minDist = float("inf")
+        for p in positionList:
+            minDist = min(minDist, self.getMazeDistance(originPoint, p))
+        return minDist
+
+    def evaluateFood(self, gameState, pos):
+        foodList = self.getFood(gameState).asList()
+        bestDist = 999999
+        bestFood = None
+
+        if self.currentSearchFood is not None and self.lastPos is not None:
+            oldPathDist = self.getMazeDistance(self.lastPos, self.currentSearchFood)
+            currentPathDist = self.getMazeDistance(pos, self.currentSearchFood)
+
+            if pos is self.lastPos:
+                self.foodPenalty += 1
+
+            if currentPathDist > oldPathDist:
+                self.foodPenalty += 5
+
+        if self.foodPenalty > 4:
+            self.dangerousFood.append(self.currentSearchFood)
+            self.currentSearchFood = None
+            self.foodPenalty = 0
+            # print("update dangerousFood: ", self.dangerousFood)
+
+        if self.currentSearchFood is None:
+            for food in foodList:
+                # check if current food is not considered dangerous
+                if food not in self.dangerousFood:
+                    isFaraway = True
+
+                    # make sure the food pellet is not close to a dangerous one
+                    for dangerFood in self.dangerousFood:
+                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 3:
+                            isFaraway = False
+
+                    # the next food pellet is far enough away that we can count it
+                    if isFaraway is True:
+                        dist = self.getMazeDistance(pos, food)
+
+                        if dist < bestDist:
+                            bestDist = dist
+                            bestFood = food
+
+        # print("bestFood: ", bestFood)
+        self.currentSearchFood = bestFood
+
+    def getFeatures(self, oldState, action):
+        # Made score take difference rather than the new score only
+        # Using old positions of enemy food
+        # Removed setting features['onCapsule] = 0
+        # Commented out features['onDefense']
+        self.updateExpectation(oldState)
 
         features = counter.Counter()
-        successor = self.getSuccessor(gameState, action)
-        features['successorScore'] = self.getScore(successor)
+        newState = self.getSuccessor(oldState, action)
+        newAgentState = newState.getAgentState(self.index)
+        enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
+        enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
+        newPos = newState.getAgentState(self.index).getPosition()
+        oldPos = oldState.getAgentState(self.index).getPosition()
 
-        myState = successor.getAgentState(self.index)
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
-        # Compute distance to the nearest food.
-        foodList = self.getFood(successor).asList()
+        if (len(enemyFood) > 0):
+            self.evaluateFood(oldState, oldPos)
 
-        # This should always be True, but better safe than sorry.
-        if (len(foodList) > 0):
-            myPos = successor.getAgentState(self.index).getPosition()
-            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            if (self.currentSearchFood is None):
+                # print("refresh")
+                self.dangerousFood = []
+                self.evaluateFood(oldState, oldPos)
 
+            if (self.currentSearchFood is not None):
+                minDistance = self.getMazeDistance(newPos, self.currentSearchFood)
+                # print("current food: ", self.currentSearchFood)
+                # print("min distance: ", minDistance)
+
+                # Individual food distances are a bit irrelevant from far away
+                features['distanceToFood'] = minDistance ** 0.7
+
+            else:
+                print("no food found")
+            
+            enemyFoodDist = self.minDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
-            features['distanceToFood'] = minDistance ** 0.7
+            features['distanceToFood'] = enemyFoodDist ** 0.7
 
             sumFoodX = 0
             sumFoodY = 0
-            for food in foodList:
+            for food in enemyFood:
                 sumFoodX += food[0]
                 sumFoodY += food[1]
 
-            averageFood = [sumFoodX / len(foodList), sumFoodY / len(foodList)]
+            averageFood = [sumFoodX / len(enemyFood), sumFoodY / len(enemyFood)]
 
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
-            features['distToAvgFood'] = (abs(myPos[0] - averageFood[0])
-                                        + abs(myPos[1] - averageFood[1])) ** 1.2
+            features['distToAvgFood'] = (abs(newPos[0] - averageFood[0])
+                                         + abs(newPos[1] - averageFood[1])) ** 1.2
 
-        if (enemies[0].isBraveGhost()) and (enemies[1].isBraveGhost()):
-            capsuleList = self.getCapsules(successor)
+        if (enemyStates[0].isBraveGhost()) and (enemyStates[1].isBraveGhost()):
+            enemyCapsules = self.getCapsules(oldState)
 
-            if (len(capsuleList) > 0):
-                myPos = successor.getAgentState(self.index).getPosition()
-                minDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+            if (len(enemyCapsules) > 0):
+                capsuleDist = self.minDistance(enemyCapsules, newPos)
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
-                features['distanceToCapsule'] = minDistance ** 0.9
+                features['distanceToCapsule'] = capsuleDist ** 0.9
 
-                features['onCapsule'] = 0
-                if (len(capsuleList) < len(self.getCapsules(gameState))):
+                if (len(enemyCapsules) < len(self.getCapsules(oldState))):
                     features['onCapsule'] = 1
 
-        myPos = myState.getPosition()
-
         # Computes whether we're on defense (1) or offense (0).
+        """
         features['onDefense'] = 1
         if (myState.isPacman()):
             features['onDefense'] = 0
+        """
 
         # Determine whether the agent should be afraid of ghosts or seeking out afraid ones.
-        if myState.isPacman():
-            brave = []
-            scared = []
+        if newAgentState.isPacman():
+            braveEnemies = []
+            scaredEnemies = []
 
             # Check which ghosts are scared.
-            for a in enemies:
+            for a in enemyStates:
                 if a.isBraveGhost():
-                    brave.append(a)
-
+                    braveEnemies.append(a.getPosition())
+    
                 else:
-                    scared.append(a)
-
-            features['danger'] = 0
-            features['distToScared'] = 0
-
-            dists = []
-
-            for a in enemies:
-                if a.isBraveGhost():
-                    dists.append(self.getMazeDistance(myPos, a.getPosition()))
+                    scaredEnemies.append(a.getPosition())
 
             # The agent should be wary of ghosts within a tight radius.
-            if (len(dists)) > 0:
-                features['danger'] = (min(dists)) ** -3
+            if len(braveEnemies) > 0:
+                features['distToBrave'] = self.minDistance(braveEnemies, newPos) ** -3
 
-            if (len(scared) > 0):
-                smallestDist = 999999
+            if (len(scaredEnemies) > 0):
+                minDist = float("inf")
                 timer = 0
 
-                for a in scared:
-                    dist = self.getMazeDistance(myPos, a.getPosition())
-
-                    if (dist < smallestDist):
-                        smallestDist = dist
+                for s in scaredEnemies:
+                    dist = self.getMazeDistance(newPos, s)
+                    if (dist < minDist):
+                        minDist = dist
                         timer = a.getScaredTimer()
 
                 # Eating vulnerable ghosts involves less danger, so the radius is relaxed.
-                features['distToScared'] = timer / smallestDist
-
-            currentEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-            scaredNum = 0
-
-            for a in currentEnemies:
-                if not a.isBraveGhost():
-                    scaredNum += 1
+                features['distToScared'] = timer / minDist
+            
+            oldScaredies = []
+            oldBravies = []
+            oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState)]
+            for s in oldEnemyStates:
+                if s.isScared():
+                    oldScaredies.append(s.getPosition())
+                else:
+                    oldBravies.append(s.getPosition())
 
             # Reward the agent for eating a ghost.
-            features['eatenGhost'] = 0
-            if (len(scared) < scaredNum):
+            if (newPos in oldScaredies):
                 features['eatenGhost'] = 1
+            elif (newPos in oldBravies):
+                features['killedbyGhost'] = 1
 
         return features
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'successorScore': 100,
+            'newStateScore': 100,
             'distanceToFood': -5,
             'distanceToCapsule': -7,
-            'danger': -90,
             'distToAvgFood': -0.1,
+            'distToBrave': -90,
             'onCapsule': 100000,
-            'distToScared': 1,
+            'distToScared': 10,
             'eatenGhost': 10000,
             'onDefense': -10,
+            'minMaxEstimate': 1
         }
 
         return ourWeights
 
-class StrategyAgentB(ReflexCaptureAgent):
+class DefenseAgent(ReflexCaptureAgent):
     """
     This is a defense agent.
 
@@ -655,8 +732,8 @@ class StrategyAgentB(ReflexCaptureAgent):
         return ourWeights
 
 def createTeam(firstIndex, secondIndex, isRed,
-        first = 'pacai.student.myTeam.StrategyAgentA',
-        second = 'pacai.student.myTeam.StrategyAgentB'):
+        first = 'pacai.student.myTeam.OffenseAgent',
+        second = 'pacai.student.myTeam.DefenseAgent'):
     """
     This function should return a list of two agents that will form the capture team,
     initialized using firstIndex and secondIndex as their agent indexed.
