@@ -2,6 +2,11 @@ from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+from pacai.core import distance
+from pacai.core.search import position  #EXPERIMENTAL
+#from pacai.core.gamestate import   #EXPERIMENTAL
+from pacai.student import search
+from pacai.core.actions import Actions
 # from pacai.util import probability
 # import random
 
@@ -216,15 +221,15 @@ class StrategyAgentB(ReflexCaptureAgent):
         defenseLerp = 0.99
         mediumLerp = 0.98
 
-        for a in enemies:
-            enemyPos = a.getPosition()
+        for enemy in enemies:
+            enemyPos = enemy.getPosition()
 
-            if a.isPacman():
+            if enemy.isPacman():
                 self.offenseDetector[index] = 1
 
             else:
                 lastValue = self.offenseDetector[index]
-                newValue = (lastValue * defenseLerp) + (0 * (1 - defenseLerp))
+                newValue = (lastValue * defenseLerp) + (0 * (1 - defenseLerp))  # Dafaq? why is (1 - defenseLerp) * 0?
                 self.offenseDetector[index] = newValue
 
             if enemyPos[0] > 12 and enemyPos[0] < 18:
@@ -241,7 +246,7 @@ class StrategyAgentB(ReflexCaptureAgent):
         successor = self.getSuccessor(gameState, action)
 
         myState = successor.getAgentState(self.index)
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        # enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
 
         myPos = myState.getPosition()
 
@@ -252,18 +257,18 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         # Computes distance to invaders we can see.
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
+        invaders = [enemy for enemy in enemies if enemy.isPacman() and enemy.getPosition() is not None]
         features['numInvaders'] = len(invaders)
 
         # Check whether we should be chasing an opposing Pac-Man or running away.
         if (len(invaders) > 0):
             if myState.isBraveGhost():
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+                dists = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in invaders]
                 features['invaderDistance'] = min(dists)
                 features['runAway'] = 0
 
             else:
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+                dists = [self.getMazeDistance(myPos, enemy.getPosition()) for enemy in invaders]
                 features['runAway'] = (1 / min(dists))
                 features['invaderDistance'] = 0
 
@@ -283,10 +288,10 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         # Attempt to predict the next food pellet the opponent will try to eat.
         # For simple agents, this will be the closest food pellet to them.
-        for a in enemies:
+        for enemy in enemies:
             if self.offenseDetector[index] > 0.1:
                 for food in ourFood:
-                    foodDist = self.getMazeDistance(food, a.getPosition())
+                    foodDist = self.getMazeDistance(food, enemy.getPosition())
 
                     if foodDist < shortestFoodDist:
                         closestFoodPos = food
@@ -307,10 +312,10 @@ class StrategyAgentB(ReflexCaptureAgent):
         index = 0
 
         # Try to predict the next power pellet the opponent will try to eat.
-        for a in enemies:
+        for enemy in enemies:
             if self.offenseDetector[index] > 0.1:
                 for capsule in ourCapsules:
-                    capsuleDist = self.getMazeDistance(capsule, a.getPosition())
+                    capsuleDist = self.getMazeDistance(capsule, enemy.getPosition())
 
                     if capsuleDist < shortestCapsuleDist:
                         closestCapsulePos = capsule
@@ -330,6 +335,9 @@ class StrategyAgentB(ReflexCaptureAgent):
         # scared timer immediately ends.
         if (features['runAway'] > 0):
             features['targetedCapsuleDist'] = targetedDist * 1.2
+
+        print("Optimal Idle Position: ", self.findOptimalIdlePosition(gameState))
+        print("Choke Points: ", self.findChokes(gameState.getInitialLayout()))
 
         # This is scrapped code for finding the path to the nearest food pellet that this
         # agent can reach before the opponent can, under the assumption that the opponent
@@ -392,6 +400,245 @@ class StrategyAgentB(ReflexCaptureAgent):
         """
 
         return features
+
+    def findChokes(self, layout):
+        """
+        Inputs = layout of the map.
+
+        Output = List containing the states that the algorithm found as choke points
+
+        Purpose: This algorithm finds out where the choke points on the map the defender must cross
+        in order to enter our territory and steal our food. This alogrithm is useful for helping
+        defense-focusd agents find which entry points they need to defend so that they can
+        hopefully position themselves to respond to any incoming invaders as promptly as possible,
+        regardless of where the invaders attack from.
+
+        ISSUES: Currently, this strategy is flawed and does not work very well when the enemy team
+        attacks with more than one of their agents. Granted, this is expected, but this strategy
+        CAN but does NOT mitigate a all-out-offensive strategy UNLESS both agents attack from the
+        same vector.
+        """
+
+        chokePoints = []
+        possibleChokes = 0  # Pretty sure I can remove this, but want to commit just in case it breaks something.
+
+        width = (layout.getWidth())
+        height = (layout.getHeight())
+
+        border = int(width/2)   # Truncated down, since this will be an improper fraction
+
+        if self.red == True:
+            numChokes = 99999999
+
+            # Looking at the left-hand side of the map
+            for row in range((border - 1), 0, -1):
+                chokesOnThisIteration = []  # Reset the list of choke points with each iteration
+
+                # For each space in this column of the map...
+                for column in range(height - 1, 0, -1):
+                    observedPosition = (row, column)
+
+                    if not layout.isWall(observedPosition):
+
+                        # Need to do some tweaking of the return values for east and west here.
+                        # For some reason, getSuccessor returns a pair of floats, but we NEED ints.
+                        (a, b) = Actions.getSuccessor(observedPosition, Directions.EAST)
+                        (x, y) = Actions.getSuccessor(observedPosition, Directions.WEST)
+
+                        east = (int(a), int(b))
+                        west = (int(x), int(y))
+
+                        # Deciding what position IS a choke point:
+
+                        # Clear corridor
+                        if not layout.isWall(east) and not layout.isWall(west):
+                            chokesOnThisIteration.append(observedPosition)
+
+                        # No idea how this fixes the alg, but don't touch it.
+                        # Seriously, this was an experiment that worked and I don't know why.
+                        if not layout.isWall(east) and layout.isWall(west):
+                            chokesOnThisIteration.append(observedPosition)
+
+                    # If it wasn't a choke, we don't care about this position, move along.
+                    else:
+                        continue
+
+                # Need to check to make sure we even found chokes. Move on if we didn't
+                if len(chokesOnThisIteration) != 0:
+                    if possibleChokes > 0:  # Pretty sure I can remove this, but want to commit first
+                        if len(chokesOnThisIteration) <= numChokes + possibleChokes:
+                            numChokes = len(chokesOnThisIteration)
+                            chokePoints = chokesOnThisIteration
+                            possibleChokes = 0
+
+                    # Found a new, easier to defend position. Use set of chokes instead.
+                    if len(chokesOnThisIteration) < numChokes:
+                        numChokes = len(chokesOnThisIteration)
+                        chokePoints = chokesOnThisIteration
+
+                    # We have probably gotten to the best defensive position possible. Return
+                    if len(chokesOnThisIteration) > numChokes:
+                        return chokePoints
+
+                    # Change nothing if numChokes didn't change.
+                    if len(chokesOnThisIteration) == numChokes:
+                        continue
+
+                if len(chokesOnThisIteration) == numChokes or len(chokesOnThisIteration) == 0:
+                    continue
+
+        # Same algorithm with some slight differences to accommodate for looking at a flipped map
+        if self.red == False:
+            numChokes = 99999999
+
+            for row in range(border, width):
+                chokesOnThisIteration = []
+                for column in range(height - 1, 0, -1):
+                    observedPosition = (row, column)
+
+                    if not layout.isWall(observedPosition):
+                        (a, b) = Actions.getSuccessor(observedPosition, Directions.EAST)
+                        (x, y) = Actions.getSuccessor(observedPosition, Directions.WEST)
+
+                        east = (int(a), int(b))
+                        west = (int(x), int(y))
+
+                        if not layout.isWall(east) and not layout.isWall(west):
+                            chokesOnThisIteration.append(observedPosition)
+
+                        if not layout.isWall(west) and layout.isWall(east):
+                            chokesOnThisIteration.append(observedPosition)
+
+                    else:
+                        continue
+
+                if len(chokesOnThisIteration) != 0:
+                    if possibleChokes > 0:  # Pretty sure I can kill this, but want to commit first.
+                        if len(chokesOnThisIteration) <= numChokes + possibleChokes:
+                            numChokes = len(chokesOnThisIteration)
+                            chokePoints = chokesOnThisIteration
+                            possibleChokes = 0
+
+                    if len(chokesOnThisIteration) < numChokes:
+                        numChokes = len(chokesOnThisIteration)
+                        chokePoints = chokesOnThisIteration
+
+                    if len(chokesOnThisIteration) > numChokes:
+                        return chokePoints
+
+                    if len(chokesOnThisIteration) == numChokes:
+                        continue
+
+                if len(chokesOnThisIteration) == numChokes or len(chokesOnThisIteration) == 0:
+                    continue
+
+
+    def findOptimalIdlePosition(self, gameState):
+        """
+        Will look for the optimal location to idle at when no enemy invaders are present. This
+        position is found by finding which position on the path between chokes positions the agent
+        such that their distance to the farthest choke point relative to their current position is
+        minimized. What I mean by this is that the agent will position itself so that its distance
+        between all choke points is roughly equal. This is done because our defense can only be as
+        strong as our most crippling weakness, so we need to distribute our "distance budget"
+        between ALL choke points on the map and make sure that the agent is not too far, and also
+        not too close to any choke point on the map.
+        """
+
+        # This bit of code just gets the distance between any one pair of choke points
+        chokePoints = self.findChokes(gameState.getInitialLayout())
+        routes = []
+
+        # Getting the routes to each choke point pair (top to bottom) and putting them in routes
+        for chokePoint in chokePoints:
+            index = chokePoints.index(chokePoint)
+
+            # This is here so that we don't get an ArrayOutOfBounds exception
+            if index == len(chokePoints) - 1:
+                break
+
+            nextChokePoint = chokePoints[index + 1]
+            searchProblem = \
+                position.PositionSearchProblem(gameState, start=chokePoint, goal=nextChokePoint)
+
+            # To get the shortest path to the next choke, we run BFS. Not too taxing.
+            optimalRoute = search.breadthFirstSearch(searchProblem)
+            routes.append((optimalRoute, chokePoint, nextChokePoint))
+
+        """
+        Now we are done getting the chokes and the routes to get from one to another. Now, we need
+        to find out where we can idle so that we are not too far from any given choke point. In
+        order to accomplish this, we need to look through each path and find the maze dist to each
+        choke from that position. We then take the max of those distances and check if it is less
+        than the distance we have recorded, and replace this inequality is true.
+        
+        THIS IS PRETTY TAXING: This is becausee we are not checking manhattan distance, but the
+        maze distance to each choke at EVERY POINT ON THE PATH BETWEEN CHOKES. This is, however,
+        a necessary evil, since we cannot make estimates here; a bad estimate can lead to a
+        very exploitable hole in our defense.
+        """
+
+        # Two vars that store the farthestChokeDist and the optimalIdlePos between iterations
+        minimumDistanceToFarthestChoke = 999999
+        optimalIdlePosition = None
+
+        # For each path from choke to choke in routes...
+        for route in routes:
+            (plan, currentPos, NOTHING) = route     # 3rd variable in the tuple is unused.
+
+            # For each action we take in that path...
+            for action in plan:
+                currentPosDistances = {}
+
+                # For every choke point on the map...
+                for choke in chokePoints:
+
+                    if currentPos == choke:
+                        currentPosDistances.update({choke: 0})  # distance.maze() cannot return 0
+                    else:
+                        currentPosDistances.update({choke:
+                            distance.maze(currentPos, choke, gameState)})
+
+                # Get the farthest choke point from the current observed position
+                currentDistToFarthestChoke = max(currentPosDistances.values())
+
+                # Update the optimalIdle position.
+                if currentDistToFarthestChoke < minimumDistanceToFarthestChoke:
+                    minimumDistanceToFarthestChoke = int(currentDistToFarthestChoke)
+                    optimalIdlePosition = currentPos
+
+                # Updating the current position along the path for next iteration
+                (x, y) = Actions.getSuccessor(currentPos, action)
+                currentPos = (int(x), int(y))
+
+        """
+        Legacy version of this. Doesn't work as well, but have thi here just in case.
+        Will likely remove this code block after committing the first time.
+        
+        for route in routes:
+            (plan, chokeOne, chokeTwo) = route
+            currentPos = chokeOne
+            for action in plan:
+                #currentPosDistance = 0
+                currentPosDistance = 0
+
+                for choke in chokePoints:
+                    #currentPosDistance += distance.maze(currentPos, choke, gameState)
+                    if currentPos == choke:
+                        continue
+                    currentPosDistance += distance.maze(currentPos, choke, gameState)
+
+                averageCurrentPosDist = currentPosDistance/len(chokePoints)
+
+                if averageCurrentPosDist < minDistance:
+                    minDistance = int(averageCurrentPosDist)
+                    minDistancePoint = currentPos
+
+                (x, y) = Actions.getSuccessor(currentPos, action)
+                currentPos = (int(x), int(y))
+        """
+
+        return optimalIdlePosition
 
     def getWeights(self, gameState, action):
         ourWeights = {
