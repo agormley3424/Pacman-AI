@@ -21,6 +21,14 @@ class HybridAgent(ReflexCaptureAgent):
     use minimax search, so it is prone to making poorly-informed movements in tight spots.
     """
 
+    """
+    Features to add:
+
+    Discourage agents from grouping up (Reduce vertical distance?)
+    Discourage agents from approaching enemy pacmen while scared
+    Play safer after one agent is killed (check distance of other agent to border)
+    """
+
     def __init__(self, index, defaultOffense, cautionThreshold, **kwargs):
         super().__init__(index)
 
@@ -162,6 +170,7 @@ class HybridAgent(ReflexCaptureAgent):
         newAgentState = newState.getAgentState(self.index)
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
         bravePositions = [s.getPosition() for s in enemyStates if s.isBraveGhost()]
+        teamPos = [newState.getAgentState(i).getPosition() for i in self.getTeam(newState)]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
         oldPos = oldState.getAgentState(self.index).getPosition()
@@ -249,6 +258,12 @@ class HybridAgent(ReflexCaptureAgent):
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
 
+            
+            y1 = teamPos[0][1]
+            y2 = teamPos[1][1]
+            features['teamDist'] = abs(y1-y2)
+
+
         return features
 
     def defenseFeatures(self, gameState, action):
@@ -273,15 +288,10 @@ class HybridAgent(ReflexCaptureAgent):
 
         # Check whether we should be chasing an opposing Pac-Man or running away.
         if (len(invaders) > 0):
-            if myState.isBraveGhost():
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-                features['invaderDistance'] = min(dists)
-                features['runAway'] = 0
-
-            else:
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-                features['runAway'] = (1 / min(dists))
-                features['invaderDistance'] = 0
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            features['invaderDistance'] = min(dists)
+            if myState.isScared():
+                features['invaderDistance'] *= -1
 
         # Slightly discourage stalling and indecisiveness.
         if (action == Directions.STOP):
@@ -341,7 +351,7 @@ class HybridAgent(ReflexCaptureAgent):
         # Best-case scenario: the scared timer runs out and the agent defends the pellet.
         # Worst-case scenario: the opponent eats the second pellet with our agent and the
         # scared timer immediately ends.
-        if (features['runAway'] > 0):
+        if myState.isScared():
             features['targetedCapsuleDist'] = targetedDist * 1.2
 
         return features
@@ -358,13 +368,13 @@ class HybridAgent(ReflexCaptureAgent):
             'eatenGhost': 10000,
             'onDefense': 0,
             'distToBrave': -90,
-            'killedByGhost': -1000
+            'killedByGhost': -1000,
+            'teamDist': 1
         }
         defenseWeights = {
             'numInvaders': -1000,
             'notOnDefense': 0,
             'invaderDistance': -14,
-            'runAway': -100,
             'targetedFoodDist': -20,
             'targetedCapsuleDist': -18,
             'stop': -10,
