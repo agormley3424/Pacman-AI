@@ -21,7 +21,7 @@ class StrategyAgentA(ReflexCaptureAgent):
     use minimax search, so it is prone to making poorly-informed movements in tight spots.
     """
 
-    def __init__(self, index, **kwargs):
+    def __init__(self, index, defaultOffense, **kwargs):
         super().__init__(index)
 
         # This can help the agent detect the potential behavior of the opposing agents.
@@ -37,12 +37,14 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         self.walls = None
 
-        self.offense = True
+        self.defaultOffense = defaultOffense
+        self.offense = defaultOffense
 
     def evaluate(self, gameState, action):
         """
         Computes a linear combination of features and feature weights.
         """
+        self.offense = self.evaluateStrategy(gameState)
         if self.offense:
             features = self.offenseFeatures(gameState, action)
         else:
@@ -50,6 +52,18 @@ class StrategyAgentA(ReflexCaptureAgent):
         weights = self.getWeights(gameState, action)
 
         return features * weights
+
+    def evaluateStrategy(self, gameState):
+        numInvaders = 0
+        for i in self.getOpponents(gameState):
+            if gameState.getAgentState(i).isPacman():
+                numInvaders += 1
+        if numInvaders == 0:
+            return True
+        elif numInvaders > 1:
+            return False
+        else:
+            return self.defaultOffense
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -74,288 +88,113 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
-    def evaluateFood(self, gameState, pos):
-        foodList = self.getFood(gameState).asList()
-        bestDist = 999999
-        bestFood = None
+    def minDistance(self, positionList, originPoint):
+        minDist = float("inf")
+        for p in positionList:
+            minDist = min(minDist, self.getMazeDistance(originPoint, p))
+        return minDist
 
-        if self.currentSearchFood is not None and self.lastPos is not None:
-            oldPathDist = self.getMazeDistance(self.lastPos, self.currentSearchFood)
-            currentPathDist = self.getMazeDistance(pos, self.currentSearchFood)
-
-            if pos is self.lastPos:
-                self.foodPenalty += 1
-
-            if currentPathDist > oldPathDist:
-                self.foodPenalty += 5
-
-        if self.foodPenalty > 4:
-            self.dangerousFood.append(self.currentSearchFood)
-            self.currentSearchFood = None
-            self.foodPenalty = 0
-            # print("update dangerousFood: ", self.dangerousFood)
-
-        if self.currentSearchFood is None:
-            for food in foodList:
-                # check if current food is not considered dangerous
-                if food not in self.dangerousFood:
-                    isFaraway = True
-
-                    # make sure the food pellet is not close to a dangerous one
-                    for dangerFood in self.dangerousFood:
-                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 3:
-                            isFaraway = False
-
-                    # the next food pellet is far enough away that we can count it
-                    if isFaraway is True:
-                        dist = self.getMazeDistance(pos, food)
-
-                        if dist < bestDist:
-                            bestDist = dist
-                            bestFood = food
-
-        # print("bestFood: ", bestFood)
-        self.currentSearchFood = bestFood
-
-    def offensiveFeatures(self, gameState, action):
-        if (self.walls is None):
-            self.walls = gameState.getWalls().asList()
-
-        if (self.riskyFood is None):
-            riskyFood = []
-
-            oldFoodList = self.getFood(gameState).asList()
-
-            for food in oldFoodList:
-                if (self.walls is not None):
-                    openness = 0
-                    otherPos = (food[0] + 1, food[1])
-
-                    if (otherPos not in self.walls):
-                        openness += 1
-
-                    otherPos = (food[0] - 1, food[1])
-
-                    if (otherPos not in self.walls):
-                        openness += 1
-
-                    otherPos = (food[0], food[1] + 1)
-
-                    if (otherPos not in self.walls):
-                        openness += 1
-
-                    otherPos = (food[0], food[1] - 1)
-
-                    if (otherPos not in self.walls):
-                        openness += 1
-
-                    if openness is 1:
-                        riskyFood.append(food)
-
-            self.riskyFood = riskyFood
-
-        self.updateExpectation(gameState)
+    def offenseFeatures(self, oldState, action):
+        self.updateExpectation(oldState)
 
         features = counter.Counter()
-        successor = self.getSuccessor(gameState, action)
-        features['successorScore'] = self.getScore(successor)
+        newState = self.getSuccessor(oldState, action)
+        newAgentState = newState.getAgentState(self.index)
+        enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
+        enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
+        newPos = newState.getAgentState(self.index).getPosition()
+        oldPos = oldState.getAgentState(self.index).getPosition()
 
-        myState = successor.getAgentState(self.index)
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        nextPos = successor.getAgentState(self.index).getPosition()
-        
-        enemyDists = []
-        minEnemyDist = None
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
-        for a in enemies:
-            if a.isBraveGhost():
-                enemyDists.append(self.getMazeDistance(nextPos, a.getPosition()))
-
-        if len(enemyDists) > 0:
-            minEnemyDist = min([dist for dist in enemyDists])
-
-            """
-            if (minEnemyDist < 2):
-                # If the enemy is too close, don't consider eating nearby pellets.
-                features['successorScore'] = 0
-            """
-
-        # Compute distance to the nearest food.
-        foodList = self.getFood(successor).asList()
-
-        # This should always be True, but better safe than sorry.
-        if (len(foodList) > 0):
-            oldPos = gameState.getAgentState(self.index).getPosition()
-
-            bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
-
-            features['distanceToFood'] = bestPathDist ** 0.7
-
-            """
-            bestPathDist = 999999
-
-            if (self.riskyFood is not None) and (minEnemyDist is not None):
-                if (minEnemyDist < 6):
-                    for food in foodList:
-                        if food not in self.riskyFood:
-                            thisFoodDist = self.getMazeDistance(nextPos, food)
-
-                            if thisFoodDist < bestPathDist:
-                                bestPathDist = thisFoodDist
-
-                else:
-                    bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
-
-            features['distanceToFood'] = bestPathDist ** 0.7
-            """
-            """
-            self.evaluateFood(gameState, oldPos)
-
-            if (self.currentSearchFood is None):
-                # print("refresh")
-                self.dangerousFood = []
-                self.evaluateFood(gameState, oldPos)
+        if (len(enemyFood) > 0):
 
             if (self.currentSearchFood is not None):
-                minDistance = self.getMazeDistance(myPos, self.currentSearchFood)
+                minDistance = self.getMazeDistance(newPos, self.currentSearchFood)
                 # print("current food: ", self.currentSearchFood)
                 # print("min distance: ", minDistance)
 
                 # Individual food distances are a bit irrelevant from far away
                 features['distanceToFood'] = minDistance ** 0.7
-
-            else:
-                print("no food found")
-            """
+            
+            enemyFoodDist = self.minDistance(enemyFood, newPos)
+            # Individual food distances are a bit irrelevant from far away
+            features['distanceToFood'] = enemyFoodDist ** 0.7
 
             sumFoodX = 0
             sumFoodY = 0
-            for food in foodList:
+            for food in enemyFood:
                 sumFoodX += food[0]
                 sumFoodY += food[1]
 
-            averageFood = [sumFoodX / len(foodList), sumFoodY / len(foodList)]
-
-            if (len(foodList) < len(self.getFood(gameState).asList())):
-                self.dangerousFood = []
+            averageFood = [sumFoodX / len(enemyFood), sumFoodY / len(enemyFood)]
 
             # The average of all food distances is helpful when not many food pellets.
             # are immediately nearby.
-            features['distToAvgFood'] = (abs(nextPos[0] - averageFood[0])
-                                        + abs(nextPos[1] - averageFood[1])) ** 1.2
+            features['distToAvgFood'] = (abs(newPos[0] - averageFood[0])
+                                         + abs(newPos[1] - averageFood[1])) ** 1.2
 
-        if (enemies[0].isBraveGhost()) and (enemies[1].isBraveGhost()):
-            capsuleList = self.getCapsules(successor)
+        if (enemyStates[0].isBraveGhost()) and (enemyStates[1].isBraveGhost()):
+            enemyCapsules = self.getCapsules(oldState)
 
-            if (len(capsuleList) > 0):
-                minDistance = min([self.getMazeDistance(nextPos, capsule) for capsule in capsuleList])
+            if (len(enemyCapsules) > 0):
+                capsuleDist = self.minDistance(enemyCapsules, newPos)
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
-                features['distanceToCapsule'] = minDistance ** 0.9
+                features['distanceToCapsule'] = capsuleDist ** 0.9
 
-                features['onCapsule'] = 0
-                if (len(capsuleList) < len(self.getCapsules(gameState))):
+                if (len(enemyCapsules) < len(self.getCapsules(oldState))):
                     features['onCapsule'] = 1
 
-        myPos = myState.getPosition()
-
-        if (self.walls is not None):
-            openness = 0
-            otherPos = (myPos[0] + 1, myPos[1])
-
-            if (otherPos not in self.walls):
-                openness += 1
-
-            otherPos = (myPos[0] - 1, myPos[1])
-
-            if (otherPos not in self.walls):
-                openness += 1
-
-            otherPos = (myPos[0], myPos[1] + 1)
-
-            if (otherPos not in self.walls):
-                openness += 1
-
-            otherPos = (myPos[0], myPos[1] - 1)
-
-            if (otherPos not in self.walls):
-                openness += 1
-
-            if (minEnemyDist is not None) and (minEnemyDist < 2):
-                features['openness'] = (openness ** 1.1) - 1
-                # features['successorScore'] = 0
-
-            else:
-                features['openness'] = 0
-            # print(openness)
-
         # Computes whether we're on defense (1) or offense (0).
-        features['onDefense'] = 1
-        if (myState.isPacman()):
-            features['onDefense'] = 0
+        if not self.offense:
+            features['onDefense'] = 1
 
         # Determine whether the agent should be afraid of ghosts or seeking out afraid ones.
-        if myState.isPacman():
-            brave = []
-            scared = []
+        if newAgentState.isPacman():
+            braveEnemies = []
+            scaredEnemies = []
 
             # Check which ghosts are scared.
-            for a in enemies:
+            for a in enemyStates:
                 if a.isBraveGhost():
-                    brave.append(a)
-
+                    braveEnemies.append(a.getPosition())
+    
                 else:
-                    scared.append(a)
-
-            features['danger'] = 0
-            features['distToScared'] = 0
-
-            dists = []
-
-            for a in enemies:
-                if a.isBraveGhost():
-                    dists.append(self.getMazeDistance(myPos, a.getPosition()))
+                    scaredEnemies.append(a.getPosition())
 
             # The agent should be wary of ghosts within a tight radius.
-            if (len(dists)) > 0:
-                features['danger'] = (min(dists)) ** -3
+            if len(braveEnemies) > 0:
+                features['distToBrave'] = self.minDistance(braveEnemies, newPos) ** -3
 
-            if (len(scared) > 0):
-                smallestDist = 999999
+            if (len(scaredEnemies) > 0):
+                minDist = float("inf")
                 timer = 0
 
-                for a in scared:
-                    dist = self.getMazeDistance(myPos, a.getPosition())
-
-                    if (dist < smallestDist):
-                        smallestDist = dist
+                for s in scaredEnemies:
+                    dist = self.getMazeDistance(newPos, s)
+                    if (dist < minDist):
+                        minDist = dist
                         timer = a.getScaredTimer()
 
                 # Eating vulnerable ghosts involves less danger, so the radius is relaxed.
-                features['distToScared'] = timer / smallestDist
-
-            currentEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-            scaredNum = 0
-
-            for a in currentEnemies:
-                if not a.isBraveGhost():
-                    scaredNum += 1
+                features['distToScared'] = timer / minDist
+            
+            oldScaredies = []
+            oldBravies = []
+            oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState)]
+            for s in oldEnemyStates:
+                if s.isScared():
+                    oldScaredies.append(s.getPosition())
+                else:
+                    oldBravies.append(s.getPosition())
 
             # Reward the agent for eating a ghost.
-            features['eatenGhost'] = 0
-            if (len(scared) < scaredNum):
+            if (newPos in oldScaredies):
                 features['eatenGhost'] = 1
-
-        # Slightly discourage stalling and indecisiveness.
-        if (action == Directions.STOP):
-            features['stop'] = 1
-
-        rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
-        if (action == rev):
-            features['reverse'] = 1
-
-        # self.lastPos = gameState.getAgentState(self.index).getPosition()
+            elif (newPos in oldBravies):
+                features['killedbyGhost'] = 1
 
         return features
 
@@ -371,8 +210,7 @@ class StrategyAgentA(ReflexCaptureAgent):
         myPos = myState.getPosition()
 
         # Computes whether we're on defense (1) or offense (0).
-        features['notOnDefense'] = 0
-        if (myState.isPacman()):
+        if self.offense:
             features['notOnDefense'] = 1
 
         # Computes distance to invaders we can see.
@@ -419,8 +257,6 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
-        features['targetedFoodDist'] = 0
-
         if (closestFoodPos is not None):
             targetedDist = self.getMazeDistance(myPos, closestFoodPos)
             features['targetedFoodDist'] = targetedDist
@@ -443,8 +279,6 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
-        features['targetedCapsuleDist'] = 0
-
         if (closestCapsulePos is not None):
             targetedDist = self.getMazeDistance(myPos, closestCapsulePos)
             features['targetedCapsuleDist'] = targetedDist
@@ -455,66 +289,6 @@ class StrategyAgentA(ReflexCaptureAgent):
         # scared timer immediately ends.
         if (features['runAway'] > 0):
             features['targetedCapsuleDist'] = targetedDist * 1.2
-
-        # This is scrapped code for finding the path to the nearest food pellet that this
-        # agent can reach before the opponent can, under the assumption that the opponent
-        # will always collect the closest food pellet to it. This code is left here in
-        # case we want to use some version of it in the future, and also because it took
-        # a while to write it all out.
-        """
-        ourFood = self.getFoodYouAreDefending(successor).asList()
-
-        bestFoodTarget = None
-        bestFoodDist = 999999
-        index = 0
-
-        for a in enemies:
-            foodChecked = []
-            enemyPos = a.getPosition()
-            lastPos = enemyPos
-            foodInRange = None
-            pathLength = 0
-            ourPathLength = 999999
-
-            if self.offenseDetector[index] > 0.15:
-                while foodInRange is None:
-                    closestFood = None
-                    shortestDist = 999999
-
-                    for food in ourFood:
-                        if food not in foodChecked:
-                            dist = self.getMazeDistance(food, lastPos)
-
-                            if dist < shortestDist:
-                                shortestDist = dist
-                                closestFood = food
-
-                    pathLength += self.getMazeDistance(closestFood, lastPos)
-                    # print("new path length: ", pathLength)
-                    distToFood = self.getMazeDistance(myPos, closestFood)
-                    #print("our path length: ", distToFood)
-
-                    if (distToFood <= (pathLength + 1)):
-                        foodInRange = closestFood
-                        ourPathLength = distToFood
-                        # print("found best path: ", ourPathLength)
-
-                    lastPos = closestFood
-                    foodChecked.append(closestFood)
-
-            if ourPathLength < bestFoodDist:
-                bestFoodDist = ourPathLength
-
-            index += 1
-
-
-        # features['targetedFoodDist'] = 0
-
-        if bestFoodTarget is not None:
-            features['targetedFoodDist'] = bestFoodDist
-
-        # print(bestFoodDist)
-        """
 
         return features
 
@@ -794,6 +568,6 @@ def createTeam(firstIndex, secondIndex, isRed):
     # secondAgent = StrategyAgentB
 
     return [
-        StrategyAgentA(firstIndex),
-        StrategyAgentB(secondIndex),
+        StrategyAgentA(index = firstIndex, defaultOffense = True),
+        StrategyAgentA(index = secondIndex, defaultOffense = False),
     ]
