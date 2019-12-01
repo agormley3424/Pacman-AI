@@ -142,46 +142,6 @@ class OffenseAgent(ReflexCaptureAgent):
 
     # Alternate plan: Check each point to see if the distance to it and back is greater than the distance from the nearest ghost to you
 
-    def evaluateFood(self, gameState, pos):
-        foodList = self.getFood(gameState).asList()
-        bestDist = 999999
-        bestFood = None
-
-        if self.currentSearchFood is not None and self.lastPos is not None:
-            oldPathDist = self.getMazeDistance(self.lastPos, self.currentSearchFood)
-            currentPathDist = self.getMazeDistance(pos, self.currentSearchFood)
-
-            if pos is self.lastPos:
-                self.foodPenalty += 1
-
-            if currentPathDist > oldPathDist:
-                self.foodPenalty += 5
-
-        if self.foodPenalty > 4:
-            self.dangerousFood.append(self.currentSearchFood)
-            self.currentSearchFood = None
-            self.foodPenalty = 0
-            # print("update dangerousFood: ", self.dangerousFood)
-
-        if self.currentSearchFood is None:
-            for food in foodList:
-                # check if current food is not considered dangerous
-                if food not in self.dangerousFood:
-                    isFaraway = True
-
-                    # make sure the food pellet is not close to a dangerous one
-                    for dangerFood in self.dangerousFood:
-                        if (abs(food[0] - dangerFood[0]) + abs(food[1] - dangerFood[1])) < 3:
-                            isFaraway = False
-
-                    # the next food pellet is far enough away that we can count it
-                    if isFaraway is True:
-                        dist = self.getMazeDistance(pos, food)
-
-                        if dist < bestDist:
-                            bestDist = dist
-                            bestFood = food
-
     def getFeatures(self, oldState, action):
         # Made score take difference rather than the new score only
         # Using old positions of enemy food
@@ -202,7 +162,7 @@ class OffenseAgent(ReflexCaptureAgent):
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if (len(enemyFood) > 0):
-            enemyFoodDist = self.weightedMinDistance(newPos, enemyFood, bravePositions, walls)
+            enemyFoodDist = self.minDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist
 
@@ -288,16 +248,18 @@ class OffenseAgent(ReflexCaptureAgent):
 
     def getWeights(self, gameState, action):
         ourWeights = {
-            'newStateScore': 0,
-            'distanceToFood': -50,
-            'distanceToCapsule': 0,
-            'distToAvgFood': 0,
-            'distToBrave': -100,
-            'onCapsule': 0,
-            'distToScared': 0,
-            'eatenGhost': 0,
-            'onDefense': 0,
+            'newStateScore': 100,
+            'distanceToFood': -5,
+            'distanceToCapsule': -7,
+            'distToAvgFood': -0.1,
+            'distToBrave': -90,
+            'onCapsule': 100000,
+            'distToScared': 10,
+            'eatenGhost': 10000,
+            'onDefense': -10,
+            'minMaxEstimate': 1
         }
+
 
         return ourWeights
 
