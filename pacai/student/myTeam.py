@@ -7,7 +7,7 @@ from pacai.util import counter
 
 # States are CaptureGameStates
 
-class StrategyAgentA(ReflexCaptureAgent):
+class HybridAgent(ReflexCaptureAgent):
     """
     This is an offense agent.
 
@@ -21,24 +21,14 @@ class StrategyAgentA(ReflexCaptureAgent):
     use minimax search, so it is prone to making poorly-informed movements in tight spots.
     """
 
-    def __init__(self, index, defaultOffense, **kwargs):
+    def __init__(self, index, defaultOffense, cautionThreshold, **kwargs):
         super().__init__(index)
 
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
-
-        self.currentSearchFood = None
-        self.lastPos = None
-        self.foodPenalty = 0
-
-        self.dangerousFood = []
-
-        self.riskyFood = None
-
-        self.walls = None
-
         self.defaultOffense = defaultOffense
         self.offense = defaultOffense
+        self.cautionThreshold = cautionThreshold
 
     def evaluate(self, gameState, action):
         """
@@ -56,7 +46,8 @@ class StrategyAgentA(ReflexCaptureAgent):
     def evaluateStrategy(self, gameState):
         numInvaders = 0
         for i in self.getOpponents(gameState):
-            if gameState.getAgentState(i).isPacman():
+            foodDist = self.closestDist(self.getFoodYouAreDefending(gameState).asList(), gameState)
+            if foodDist  < self.cautionThreshold:
                 numInvaders += 1
         if numInvaders == 0:
             return True
@@ -94,6 +85,75 @@ class StrategyAgentA(ReflexCaptureAgent):
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
 
+    def openness(self, walls, pointPos):
+        x, y = pointPos
+        openWest = 0
+        while not walls[x][y]:
+            x -= 1
+            openWest += 1
+
+        x, y = pointPos
+        openNorth = 0
+        while not walls[x][y]:
+            y += 1
+            openNorth += 1
+
+        x, y = pointPos
+        openEast = 0
+        while not walls[x][y]:
+            x += 1
+            openEast += 1
+
+        x, y = pointPos
+        openSouth = 0
+        while not walls[x][y]:
+            y -= 1
+            openSouth += 1
+
+        cardinalList = [openWest, openNorth, openEast, openSouth]
+        cardinalList.remove(max(cardinalList))
+
+        return sum(cardinalList) / 3
+
+    def weightedMinDistance(self, ourPosition, foodPositions, ghostPositions, walls):
+        minDist = float("inf")
+        minEnemyDist = float("inf")
+        minPoint = None
+        for p in foodPositions:
+            foodDist = self.getMazeDistance(ourPosition, p) / 200
+            open = self.openness(walls, p)
+            foodDist /= open
+            minDist = min(minDist, foodDist)
+        return minDist
+
+    def closestDist(self, foodList, gameState):
+        closestFoodPos = None
+        shortestFoodDist = float("inf")
+        index = 0
+        enemyStates = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        scaredPos = []
+        bravePos = []
+        for en in enemyStates:
+            if en.isScared():
+                scaredPos.append(en.getPosition())
+            else:
+                bravePos.append(en.getPosition())
+        for e in bravePos:
+            for food in foodList:
+                foodDist = self.getMazeDistance(food, e)
+                if foodDist < shortestFoodDist:
+                    closestFoodPos = food
+                    shortestFoodDist = foodDist
+
+        for e in scaredPos:
+            for food in foodList:
+                foodDist = self.getMazeDistance(food, e) / 2
+                if foodDist < shortestFoodDist:
+                    closestFoodPos = food
+                    shortestFoodDist = foodDist
+
+        return shortestFoodDist
+
     def offenseFeatures(self, oldState, action):
         self.updateExpectation(oldState)
 
@@ -101,22 +161,15 @@ class StrategyAgentA(ReflexCaptureAgent):
         newState = self.getSuccessor(oldState, action)
         newAgentState = newState.getAgentState(self.index)
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
+        bravePositions = [s.getPosition() for s in enemyStates if s.isBraveGhost()]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
         oldPos = oldState.getAgentState(self.index).getPosition()
+        walls = oldState.getWalls()
 
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
-        if (len(enemyFood) > 0):
-
-            if (self.currentSearchFood is not None):
-                minDistance = self.getMazeDistance(newPos, self.currentSearchFood)
-                # print("current food: ", self.currentSearchFood)
-                # print("min distance: ", minDistance)
-
-                # Individual food distances are a bit irrelevant from far away
-                features['distanceToFood'] = minDistance ** 0.7
-            
+        if len(enemyFood) > 0:
             enemyFoodDist = self.minDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist ** 0.7
@@ -241,8 +294,9 @@ class StrategyAgentA(ReflexCaptureAgent):
         ourFood = self.getFoodYouAreDefending(successor).asList()
 
         closestFoodPos = None
-        shortestFoodDist = 999999
+        shortestFoodDist = float("inf")
         index = 0
+
 
         # Attempt to predict the next food pellet the opponent will try to eat.
         # For simple agents, this will be the closest food pellet to them.
@@ -295,22 +349,20 @@ class StrategyAgentA(ReflexCaptureAgent):
     def getWeights(self, gameState, action):
 
         offenseWeights = {
-            'successorScore': 100,
+            'newStateScore': 100,
             'distanceToFood': -5,
             'distanceToCapsule': -8,
-            'danger': -90,
             'distToAvgFood': -0.1,
             'onCapsule': 100000,
             'distToScared': 0.1,
             'eatenGhost': 10000,
-            'onDefense': -1,
-            'openness': 0,
-            'stop': -10,
-            'reverse': 0
+            'onDefense': 0,
+            'distToBrave': -90,
+            'killedByGhost': -1000
         }
         defenseWeights = {
             'numInvaders': -1000,
-            'notOnDefense': -200,
+            'notOnDefense': 0,
             'invaderDistance': -14,
             'runAway': -100,
             'targetedFoodDist': -20,
@@ -324,238 +376,6 @@ class StrategyAgentA(ReflexCaptureAgent):
         else:
             return defenseWeights
 
-class StrategyAgentB(ReflexCaptureAgent):
-    """
-    This is a defense agent.
-
-    This agent attempts to find the most likely food pellet the enemy may eat and
-    proceeds to sit at that pellet. The agent will try to track down incoming invaders
-    but prefers to sit atop of pellets to stall the opponent's progress. When this agent
-    is in danger of being eaten, it will attempt to be efficient by sitting on the other
-    remaining power pellet, either waiting for the vulnerability to end or tricking the
-    opponent into wasting the next power pellet.
-
-    Even if the opponent manages to make some progress, it will have a lot of difficulty
-    eating most of the pellets without first eating a power pellet. Fortunately, power
-    pellets are typically hidden deeper into a map most of the time, and there's a good
-    chance that agents will be greedy enough to approach the nearest food pellet first,
-    since eating pellets is the only way to increase their score. In many cases, it
-    becomes easier to camp pellets as more are collected, buying valuable time for the
-    offense agent.
-
-    Fatal flaw: This agent always assumes the opponent will approach the food pellet
-    closest to it. A minimax agent may be able to outmaneuver it. Any agent that can
-    reach power pellets before this agent will put this agent in serious danger.
-    """
-
-    def __init__(self, index, **kwargs):
-        super().__init__(index)
-
-        # This can help the agent detect the potential behavior of the opposing agents.
-        self.offenseDetector = [1, 1]
-
-    def updateExpectation(self, gameState):
-        # Update our estimate of how we expect our opponents to behave
-        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-
-        index = 0
-
-        # We want to keep a close eye on offensive opponents.
-        # Opponents that stick around the middle of the map are also potentially dangerous.
-        defenseLerp = 0.99
-        mediumLerp = 0.98
-
-        for a in enemies:
-            enemyPos = a.getPosition()
-
-            if a.isPacman():
-                self.offenseDetector[index] = 1
-
-            else:
-                lastValue = self.offenseDetector[index]
-                newValue = (lastValue * defenseLerp) + (0 * (1 - defenseLerp))
-                self.offenseDetector[index] = newValue
-
-            if enemyPos[0] > 13 and enemyPos[0] < 17:
-                lastValue = self.offenseDetector[index]
-                newValue = (lastValue * mediumLerp) + (1 * (1 - mediumLerp))
-                self.offenseDetector[index] = newValue
-
-            index += 1
-
-    def getFeatures(self, gameState, action):
-        self.updateExpectation(gameState)
-
-        features = counter.Counter()
-        successor = self.getSuccessor(gameState, action)
-
-        myState = successor.getAgentState(self.index)
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-
-        myPos = myState.getPosition()
-
-        # Computes whether we're on defense (1) or offense (0).
-        features['notOnDefense'] = 0
-        if (myState.isPacman()):
-            features['notOnDefense'] = 1
-
-        # Computes distance to invaders we can see.
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        invaders = [a for a in enemies if a.isPacman() and a.getPosition() is not None]
-        features['numInvaders'] = len(invaders)
-
-        # Check whether we should be chasing an opposing Pac-Man or running away.
-        if (len(invaders) > 0):
-            if myState.isBraveGhost():
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-                features['invaderDistance'] = min(dists)
-                features['runAway'] = 0
-
-            else:
-                dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-                features['runAway'] = (1 / min(dists))
-                features['invaderDistance'] = 0
-
-        # Slightly discourage stalling and indecisiveness.
-        if (action == Directions.STOP):
-            features['stop'] = 1
-
-        rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
-        if (action == rev):
-            features['reverse'] = 1
-
-        ourFood = self.getFoodYouAreDefending(successor).asList()
-
-        closestFoodPos = None
-        shortestFoodDist = 999999
-        index = 0
-
-        # Attempt to predict the next food pellet the opponent will try to eat.
-        # For simple agents, this will be the closest food pellet to them.
-        for a in enemies:
-            if self.offenseDetector[index] > 0.1:
-                for food in ourFood:
-                    foodDist = self.getMazeDistance(food, a.getPosition())
-
-                    if foodDist < shortestFoodDist:
-                        closestFoodPos = food
-                        shortestFoodDist = foodDist
-
-            index += 1
-
-        features['targetedFoodDist'] = 0
-
-        if (closestFoodPos is not None):
-            targetedDist = self.getMazeDistance(myPos, closestFoodPos)
-            features['targetedFoodDist'] = targetedDist
-
-        ourCapsules = self.getCapsulesYouAreDefending(successor)
-
-        closestCapsulePos = None
-        shortestCapsuleDist = 999999
-        index = 0
-
-        # Try to predict the next power pellet the opponent will try to eat.
-        for a in enemies:
-            if self.offenseDetector[index] > 0.1:
-                for capsule in ourCapsules:
-                    capsuleDist = self.getMazeDistance(capsule, a.getPosition())
-
-                    if capsuleDist < shortestCapsuleDist:
-                        closestCapsulePos = capsule
-                        shortestCapsuleDist = capsuleDist
-
-            index += 1
-
-        features['targetedCapsuleDist'] = 0
-
-        if (closestCapsulePos is not None):
-            targetedDist = self.getMazeDistance(myPos, closestCapsulePos)
-            features['targetedCapsuleDist'] = targetedDist
-
-        # If our defensive agent is already in danger, attempt to camp the next power pellet.
-        # Best-case scenario: the scared timer runs out and the agent defends the pellet.
-        # Worst-case scenario: the opponent eats the second pellet with our agent and the
-        # scared timer immediately ends.
-        if (features['runAway'] > 0):
-            features['targetedCapsuleDist'] = targetedDist * 1.2
-
-        # This is scrapped code for finding the path to the nearest food pellet that this
-        # agent can reach before the opponent can, under the assumption that the opponent
-        # will always collect the closest food pellet to it. This code is left here in
-        # case we want to use some version of it in the future, and also because it took
-        # a while to write it all out.
-        """
-        ourFood = self.getFoodYouAreDefending(successor).asList()
-
-        bestFoodTarget = None
-        bestFoodDist = 999999
-        index = 0
-
-        for a in enemies:
-            foodChecked = []
-            enemyPos = a.getPosition()
-            lastPos = enemyPos
-            foodInRange = None
-            pathLength = 0
-            ourPathLength = 999999
-
-            if self.offenseDetector[index] > 0.15:
-                while foodInRange is None:
-                    closestFood = None
-                    shortestDist = 999999
-
-                    for food in ourFood:
-                        if food not in foodChecked:
-                            dist = self.getMazeDistance(food, lastPos)
-
-                            if dist < shortestDist:
-                                shortestDist = dist
-                                closestFood = food
-
-                    pathLength += self.getMazeDistance(closestFood, lastPos)
-                    # print("new path length: ", pathLength)
-                    distToFood = self.getMazeDistance(myPos, closestFood)
-                    #print("our path length: ", distToFood)
-
-                    if (distToFood <= (pathLength + 1)):
-                        foodInRange = closestFood
-                        ourPathLength = distToFood
-                        # print("found best path: ", ourPathLength)
-
-                    lastPos = closestFood
-                    foodChecked.append(closestFood)
-
-            if ourPathLength < bestFoodDist:
-                bestFoodDist = ourPathLength
-
-            index += 1
-
-
-        # features['targetedFoodDist'] = 0
-
-        if bestFoodTarget is not None:
-            features['targetedFoodDist'] = bestFoodDist
-
-        # print(bestFoodDist)
-        """
-
-        return features
-
-    def getWeights(self, gameState, action):
-        ourWeights = {
-            'numInvaders': -1000,
-            'notOnDefense': -200,
-            'invaderDistance': -14,
-            'runAway': -100,
-            'targetedFoodDist': -20,
-            'targetedCapsuleDist': -18,
-            'stop': -10,
-            'reverse': -0.1
-        }
-
-        return ourWeights
-
 def createTeam(firstIndex, secondIndex, isRed):
     """
     This function should return a list of two agents that will form the capture team,
@@ -568,6 +388,6 @@ def createTeam(firstIndex, secondIndex, isRed):
     # secondAgent = StrategyAgentB
 
     return [
-        StrategyAgentA(index = firstIndex, defaultOffense = True),
-        StrategyAgentA(index = secondIndex, defaultOffense = False),
+        HybridAgent(index = firstIndex, defaultOffense = True, cautionThreshold = 5),
+        HybridAgent(index = secondIndex, defaultOffense = False, cautionThreshold = 10),
     ]
