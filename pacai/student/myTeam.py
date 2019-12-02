@@ -2,6 +2,7 @@
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+import math
 # from pacai.util import probability
 # import random
 
@@ -22,10 +23,10 @@ class HybridAgent(ReflexCaptureAgent):
     """
 
     """
-    Features to add:
+    To do:
 
-    Discourage agents from grouping up (Reduce vertical distance?)
     Discourage agents from approaching enemy pacmen while scared
+    Use average height of current dots rather than absolute height for hemisphere division
     Play safer after one agent is killed (check distance of other agent to border)
     """
 
@@ -135,6 +136,18 @@ class HybridAgent(ReflexCaptureAgent):
         return minDist
     """
 
+    def weightedMinDistance(self, positionList, originPoint, walls):
+        minDist = float("inf")
+        height = walls.getHeight()
+        for p in positionList:
+            pointDist = self.getMazeDistance(originPoint, p)
+            if self.defaultOffense and p[1] > math.floor(height / 2):
+                pointDist /= 2
+            elif not self.defaultOffense and p[1] < math.floor(height / 2):
+                pointDist /= 2
+            minDist = min(minDist, pointDist)
+        return minDist
+
     def closestDist(self, foodList, gameState):
         closestFoodPos = None
         shortestFoodDist = float("inf")
@@ -180,7 +193,7 @@ class HybridAgent(ReflexCaptureAgent):
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if len(enemyFood) > 0:
-            enemyFoodDist = self.minDistance(enemyFood, newPos)
+            enemyFoodDist = self.weightedMinDistance(enemyFood, newPos, walls)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist ** 0.7
 
@@ -206,6 +219,8 @@ class HybridAgent(ReflexCaptureAgent):
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
                 features['distanceToCapsule'] = capsuleDist ** 0.9
+                if not self.defaultOffense:
+                    features['distanceToCapsule'] = 0
 
                 if (len(enemyCapsules) < len(self.getCapsules(oldState))):
                     features['onCapsule'] = 1
@@ -286,7 +301,7 @@ class HybridAgent(ReflexCaptureAgent):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             features['invaderDistance'] = min(dists)
             if myState.isScared():
-                features['invaderDistance'] *= -1
+                features['runaway'] *= features['invaderDistance']
 
         # Slightly discourage stalling and indecisiveness.
         if (action == Directions.STOP):
@@ -373,7 +388,8 @@ class HybridAgent(ReflexCaptureAgent):
             'targetedFoodDist': -20,
             'targetedCapsuleDist': -18,
             'stop': -10,
-            'reverse': -0.1
+            'reverse': -0.1,
+            'runaway': 100
         }
 
         if self.offense:
