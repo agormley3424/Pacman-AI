@@ -92,7 +92,7 @@ class HybridAgent(ReflexCaptureAgent):
         for p in positionList:
             minDist = min(minDist, self.getMazeDistance(originPoint, p))
         return minDist
-
+    """
     def openness(self, walls, pointPos):
         x, y = pointPos
         openWest = 0
@@ -133,6 +133,7 @@ class HybridAgent(ReflexCaptureAgent):
             foodDist /= open
             minDist = min(minDist, foodDist)
         return minDist
+    """
 
     def closestDist(self, foodList, gameState):
         closestFoodPos = None
@@ -257,12 +258,6 @@ class HybridAgent(ReflexCaptureAgent):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
-
-            
-            y1 = teamPos[0][1]
-            y2 = teamPos[1][1]
-            features['teamDist'] = abs(y1-y2)
-
 
         return features
 
