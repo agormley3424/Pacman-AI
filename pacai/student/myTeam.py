@@ -62,11 +62,15 @@ class HybridAgent(ReflexCaptureAgent):
                     numInvaders += 1
             index += 1
 
-        if numInvaders == 0:
+        if numInvaders is 0:
             return True
 
-        else:
+        elif numInvaders > 1:
             return False
+
+        else:
+            return self.defaultOffense
+
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -80,9 +84,7 @@ class HybridAgent(ReflexCaptureAgent):
 
         for a in enemies:
             if a.isPacman():
-                lastValue = self.offenseDetector[index]
-                newValue = (lastValue * offenseLerp) + (1 * (1 - offenseLerp))
-                self.offenseDetector[index] = newValue
+                self.offenseDetector[index] = 1
 
             else:
                 lastValue = self.offenseDetector[index]
@@ -241,7 +243,7 @@ class HybridAgent(ReflexCaptureAgent):
             for a in enemyStates:
                 if a.isBraveGhost():
                     braveEnemies.append(a.getPosition())
-    
+
                 else:
                     scaredEnemies.append(a.getPosition())
 
@@ -276,6 +278,13 @@ class HybridAgent(ReflexCaptureAgent):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
+
+        # Slightly discourage stalling and indecisiveness.
+        if (action == Directions.STOP):
+            features['stop'] = 1
+
+            if (oldPos[0] >= 14 and oldPos[0] <= 15):
+                features['stop'] = 100
 
         return features
 
@@ -382,7 +391,8 @@ class HybridAgent(ReflexCaptureAgent):
             'onDefense': 0,
             'distToBrave': -90,
             'killedByGhost': -1000,
-            'teamDist': 1
+            'teamDist': 1,
+            'stop': -10,
         }
         defenseWeights = {
             'numInvaders': -1000,
@@ -392,7 +402,7 @@ class HybridAgent(ReflexCaptureAgent):
             'targetedCapsuleDist': -18,
             'stop': -10,
             'reverse': -0.1,
-            'runaway': 100
+            'runaway': 100,
         }
 
         if self.offense:
@@ -412,6 +422,6 @@ def createTeam(firstIndex, secondIndex, isRed):
     # secondAgent = StrategyAgentB
 
     return [
-        HybridAgent(index = firstIndex, defaultOffense = True, cautionThreshold = 5),
-        HybridAgent(index = secondIndex, defaultOffense = False, cautionThreshold = 15),
+        HybridAgent(index = firstIndex, defaultOffense = True, cautionThreshold = 8),
+        HybridAgent(index = secondIndex, defaultOffense = False, cautionThreshold = 12),
     ]
