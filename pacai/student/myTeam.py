@@ -54,16 +54,19 @@ class HybridAgent(ReflexCaptureAgent):
 
     def evaluateStrategy(self, gameState):
         numInvaders = 0
+        index = 0
         for i in self.getOpponents(gameState):
-            foodDist = self.closestDist(self.getFoodYouAreDefending(gameState).asList(), gameState)
-            if foodDist  < self.cautionThreshold:
-                numInvaders += 1
+            if self.offenseDetector[index] > 0.1 and gameState.getAgentState(i).isScared() is False:
+                foodDist = self.closestDist(self.getFoodYouAreDefending(gameState).asList(), gameState)
+                if foodDist < self.cautionThreshold:
+                    numInvaders += 1
+            index += 1
+
         if numInvaders == 0:
             return True
-        elif numInvaders > 1:
-            return False
+
         else:
-            return self.defaultOffense
+            return False
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
@@ -362,7 +365,7 @@ class HybridAgent(ReflexCaptureAgent):
         # Worst-case scenario: the opponent eats the second pellet with our agent and the
         # scared timer immediately ends.
         if myState.isScared():
-            features['targetedCapsuleDist'] = targetedDist * 1.2
+            features['targetedCapsuleDist'] = targetedDist * 1.5
 
         return features
 
@@ -371,7 +374,7 @@ class HybridAgent(ReflexCaptureAgent):
         offenseWeights = {
             'newStateScore': 100,
             'distanceToFood': -5,
-            'distanceToCapsule': -8,
+            'distanceToCapsule': -9,
             'distToAvgFood': -0.1,
             'onCapsule': 100000,
             'distToScared': 0.1,
@@ -383,7 +386,7 @@ class HybridAgent(ReflexCaptureAgent):
         }
         defenseWeights = {
             'numInvaders': -1000,
-            'notOnDefense': 0,
+            'notOnDefense': -20,
             'invaderDistance': -14,
             'targetedFoodDist': -20,
             'targetedCapsuleDist': -18,
@@ -410,5 +413,5 @@ def createTeam(firstIndex, secondIndex, isRed):
 
     return [
         HybridAgent(index = firstIndex, defaultOffense = True, cautionThreshold = 5),
-        HybridAgent(index = secondIndex, defaultOffense = False, cautionThreshold = 10),
+        HybridAgent(index = secondIndex, defaultOffense = False, cautionThreshold = 15),
     ]
