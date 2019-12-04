@@ -177,43 +177,6 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             features['distanceToFood'] = bestPathDist ** 0.7
 
-            """
-            bestPathDist = 999999
-
-            if (self.riskyFood is not None) and (minEnemyDist is not None):
-                if (minEnemyDist < 6):
-                    for food in foodList:
-                        if food not in self.riskyFood:
-                            thisFoodDist = self.getMazeDistance(nextPos, food)
-
-                            if thisFoodDist < bestPathDist:
-                                bestPathDist = thisFoodDist
-
-                else:
-                    bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
-
-            features['distanceToFood'] = bestPathDist ** 0.7
-            """
-            """
-            self.evaluateFood(gameState, oldPos)
-
-            if (self.currentSearchFood is None):
-                # print("refresh")
-                self.dangerousFood = []
-                self.evaluateFood(gameState, oldPos)
-
-            if (self.currentSearchFood is not None):
-                minDistance = self.getMazeDistance(myPos, self.currentSearchFood)
-                # print("current food: ", self.currentSearchFood)
-                # print("min distance: ", minDistance)
-
-                # Individual food distances are a bit irrelevant from far away
-                features['distanceToFood'] = minDistance ** 0.7
-
-            else:
-                print("no food found")
-            """
-
             sumFoodX = 0
             sumFoodY = 0
             for food in foodList:
@@ -519,66 +482,6 @@ class StrategyAgentB(ReflexCaptureAgent):
         # scared timer immediately ends.
         if (features['runAway'] > 0):
             features['targetedCapsuleDist'] = targetedDist * 1.2
-
-        # This is scrapped code for finding the path to the nearest food pellet that this
-        # agent can reach before the opponent can, under the assumption that the opponent
-        # will always collect the closest food pellet to it. This code is left here in
-        # case we want to use some version of it in the future, and also because it took
-        # a while to write it all out.
-        """
-        ourFood = self.getFoodYouAreDefending(successor).asList()
-
-        bestFoodTarget = None
-        bestFoodDist = 999999
-        index = 0
-
-        for a in enemies:
-            foodChecked = []
-            enemyPos = a.getPosition()
-            lastPos = enemyPos
-            foodInRange = None
-            pathLength = 0
-            ourPathLength = 999999
-
-            if self.offenseDetector[index] > 0.15:
-                while foodInRange is None:
-                    closestFood = None
-                    shortestDist = 999999
-
-                    for food in ourFood:
-                        if food not in foodChecked:
-                            dist = self.getMazeDistance(food, lastPos)
-
-                            if dist < shortestDist:
-                                shortestDist = dist
-                                closestFood = food
-
-                    pathLength += self.getMazeDistance(closestFood, lastPos)
-                    # print("new path length: ", pathLength)
-                    distToFood = self.getMazeDistance(myPos, closestFood)
-                    #print("our path length: ", distToFood)
-
-                    if (distToFood <= (pathLength + 1)):
-                        foodInRange = closestFood
-                        ourPathLength = distToFood
-                        # print("found best path: ", ourPathLength)
-
-                    lastPos = closestFood
-                    foodChecked.append(closestFood)
-
-            if ourPathLength < bestFoodDist:
-                bestFoodDist = ourPathLength
-
-            index += 1
-
-
-        # features['targetedFoodDist'] = 0
-
-        if bestFoodTarget is not None:
-            features['targetedFoodDist'] = bestFoodDist
-
-        # print(bestFoodDist)
-        """
 
         return features
 
