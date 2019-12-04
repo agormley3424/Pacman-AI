@@ -135,7 +135,7 @@ class StrategyAgentA(ReflexCaptureAgent):
                     if (otherPos not in self.walls):
                         openness += 1
 
-                    if openness is 1:
+                    if openness == 1:
                         riskyFood.append(food)
 
             self.riskyFood = riskyFood
@@ -149,7 +149,7 @@ class StrategyAgentA(ReflexCaptureAgent):
         myState = successor.getAgentState(self.index)
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         nextPos = successor.getAgentState(self.index).getPosition()
-        
+
         enemyDists = []
         minEnemyDist = None
 
@@ -171,7 +171,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         # This should always be True, but better safe than sorry.
         if (len(foodList) > 0):
-            oldPos = gameState.getAgentState(self.index).getPosition()
+            # oldPos = gameState.getAgentState(self.index).getPosition()
 
             bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
 
@@ -234,7 +234,8 @@ class StrategyAgentA(ReflexCaptureAgent):
             capsuleList = self.getCapsules(successor)
 
             if (len(capsuleList) > 0):
-                minDistance = min([self.getMazeDistance(nextPos, capsule) for capsule in capsuleList])
+                dists = [self.getMazeDistance(nextPos, capsule) for capsule in capsuleList]
+                minDistance = min(dists)
 
                 # Same thing as calculating distance to power pellets.
                 # The only difference is that power pellets are relevant within a larger radius.
