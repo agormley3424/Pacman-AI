@@ -2,6 +2,7 @@
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
+import random
 # from pacai.util import probability
 # import random
 
@@ -466,6 +467,7 @@ class StrategyAgentB(ReflexCaptureAgent):
         ourFood = self.getFoodYouAreDefending(successor).asList()
 
         closestFoodPos = None
+        secondClosestFood = None
         shortestFoodDist = 999999
         index = 0
 
@@ -477,6 +479,7 @@ class StrategyAgentB(ReflexCaptureAgent):
                     foodDist = self.getMazeDistance(food, a.getPosition())
 
                     if foodDist < shortestFoodDist:
+                        secondClosestFood = closestFoodPos
                         closestFoodPos = food
                         shortestFoodDist = foodDist
 
@@ -486,7 +489,12 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         if (closestFoodPos is not None):
             targetedDist = self.getMazeDistance(myPos, closestFoodPos)
-            features['targetedFoodDist'] = targetedDist
+            pointDist = self.getMazeDistance(closestFoodPos, secondClosestFood)
+            if secondClosestFood is not None and pointDist < 8:
+                secondTargetedDist = self.getMazeDistance(myPos, secondClosestFood)
+                features['targetedFoodDist'] = random.choice([targetedDist, secondTargetedDist])
+            else:
+                features['targetedFoodDist'] = targetedDist
 
         ourCapsules = self.getCapsulesYouAreDefending(successor)
 
