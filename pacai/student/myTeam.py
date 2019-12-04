@@ -136,14 +136,17 @@ class HybridAgent(ReflexCaptureAgent):
         return minDist
     """
 
-    def weightedMinDistance(self, positionList, originPoint, walls):
+    def weightedMinDistance(self, positionList, originPoint):
         minDist = float("inf")
-        height = walls.getHeight()
+        sumHeight = 0
+        for f in positionList:
+            sumHeight += f[1]
+        avgHeight = sumHeight / len(positionList)
         for p in positionList:
             pointDist = self.getMazeDistance(originPoint, p)
-            if self.defaultOffense and p[1] > math.floor(height / 2):
+            if self.defaultOffense and p[1] > math.floor(avgHeight / 2):
                 pointDist /= 2
-            elif not self.defaultOffense and p[1] < math.floor(height / 2):
+            elif not self.defaultOffense and p[1] < math.floor(avgHeight / 2):
                 pointDist /= 2
             minDist = min(minDist, pointDist)
         return minDist
@@ -193,7 +196,7 @@ class HybridAgent(ReflexCaptureAgent):
         features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
 
         if len(enemyFood) > 0:
-            enemyFoodDist = self.weightedMinDistance(enemyFood, newPos, walls)
+            enemyFoodDist = self.weightedMinDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist ** 0.7
 
@@ -273,6 +276,15 @@ class HybridAgent(ReflexCaptureAgent):
                 features['eatenGhost'] = 1
             elif (newPos in oldBravies):
                 features['killedbyGhost'] = 1
+        elif newAgentState.isScared():
+            pacEnemies = []
+
+            for a in enemyStates:
+                if a.isPacman():
+                    pacEnemies.append(a.getPosition())
+
+            features['distToPac'] = self.minDistance(pacEnemies, newPos)
+
 
         return features
 
@@ -379,7 +391,7 @@ class HybridAgent(ReflexCaptureAgent):
             'onDefense': 0,
             'distToBrave': -90,
             'killedByGhost': -1000,
-            'teamDist': 1
+            'distToPac': 100
         }
         defenseWeights = {
             'numInvaders': -1000,
