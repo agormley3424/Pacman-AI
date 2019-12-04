@@ -57,12 +57,13 @@ class HybridAgent(ReflexCaptureAgent):
         index = 0
         for i in self.getOpponents(gameState):
             if self.offenseDetector[index] > 0.1 and gameState.getAgentState(i).isScared() is False:
-                foodDist = self.closestDist(self.getFoodYouAreDefending(gameState).asList(), gameState)
+                foodDist = self.closestDist(self.getFoodYouAreDefending(gameState).asList(),
+                                           gameState)
                 if foodDist < self.cautionThreshold:
                     numInvaders += 1
             index += 1
 
-        if numInvaders is 0:
+        if numInvaders == 0:
             return True
 
         elif numInvaders > 1:
@@ -71,7 +72,6 @@ class HybridAgent(ReflexCaptureAgent):
         else:
             return self.defaultOffense
 
-
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
@@ -79,7 +79,6 @@ class HybridAgent(ReflexCaptureAgent):
         index = 0
 
         # We want to keep a close eye on offensive opponents.
-        offenseLerp = 0.1
         defenseLerp = 0.99
 
         for a in enemies:
@@ -154,9 +153,7 @@ class HybridAgent(ReflexCaptureAgent):
         return minDist
 
     def closestDist(self, foodList, gameState):
-        closestFoodPos = None
         shortestFoodDist = float("inf")
-        index = 0
         enemyStates = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
         scaredPos = []
         bravePos = []
@@ -169,14 +166,12 @@ class HybridAgent(ReflexCaptureAgent):
             for food in foodList:
                 foodDist = self.getMazeDistance(food, e)
                 if foodDist < shortestFoodDist:
-                    closestFoodPos = food
                     shortestFoodDist = foodDist
 
         for e in scaredPos:
             for food in foodList:
                 foodDist = self.getMazeDistance(food, e) / 2
                 if foodDist < shortestFoodDist:
-                    closestFoodPos = food
                     shortestFoodDist = foodDist
 
         return shortestFoodDist
@@ -188,14 +183,14 @@ class HybridAgent(ReflexCaptureAgent):
         newState = self.getSuccessor(oldState, action)
         newAgentState = newState.getAgentState(self.index)
         enemyStates = [newState.getAgentState(i) for i in self.getOpponents(newState)]
-        bravePositions = [s.getPosition() for s in enemyStates if s.isBraveGhost()]
-        teamPos = [newState.getAgentState(i).getPosition() for i in self.getTeam(newState)]
+        # bravePositions = [s.getPosition() for s in enemyStates if s.isBraveGhost()]
+        # teamPos = [newState.getAgentState(i).getPosition() for i in self.getTeam(newState)]
         enemyFood = self.getFood(oldState).asList()  # Compute distance to the nearest food.
         newPos = newState.getAgentState(self.index).getPosition()
         oldPos = oldState.getAgentState(self.index).getPosition()
         walls = oldState.getWalls()
 
-        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)
 
         if len(enemyFood) > 0:
             enemyFoodDist = self.weightedMinDistance(enemyFood, newPos, walls)
@@ -263,7 +258,7 @@ class HybridAgent(ReflexCaptureAgent):
 
                 # Eating vulnerable ghosts involves less danger, so the radius is relaxed.
                 features['distToScared'] = timer / minDist
-            
+
             oldScaredies = []
             oldBravies = []
             oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState)]
@@ -328,7 +323,6 @@ class HybridAgent(ReflexCaptureAgent):
         closestFoodPos = None
         shortestFoodDist = float("inf")
         index = 0
-
 
         # Attempt to predict the next food pellet the opponent will try to eat.
         # For simple agents, this will be the closest food pellet to them.
