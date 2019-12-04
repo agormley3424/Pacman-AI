@@ -1,9 +1,10 @@
 from pacai.util import reflection
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
+from pacai.core import distanceCalculator
 from pacai.util import counter
 from pacai.core import distance
-from pacai.core.search import position  #EXPERIMENTAL
+from pacai.core.search.position import PositionSearchProblem
 #from pacai.core.gamestate import   #EXPERIMENTAL
 from pacai.student import search
 from pacai.core.actions import Actions
@@ -136,7 +137,7 @@ class OffenseAgent(ReflexCaptureAgent):
         newPos = newState.getAgentState(self.index).getPosition()
         oldPos = oldState.getAgentState(self.index).getPosition()
 
-        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)  
+        features['newStateScore'] = self.getScore(newState) - self.getScore(oldState)
 
         if (len(enemyFood) > 0):
             self.evaluateFood(oldState, oldPos)
@@ -156,7 +157,7 @@ class OffenseAgent(ReflexCaptureAgent):
 
             else:
                 print("no food found")
-            
+
             enemyFoodDist = self.minDistance(enemyFood, newPos)
             # Individual food distances are a bit irrelevant from far away
             features['distanceToFood'] = enemyFoodDist ** 0.7
@@ -203,7 +204,7 @@ class OffenseAgent(ReflexCaptureAgent):
             for a in enemyStates:
                 if a.isBraveGhost():
                     braveEnemies.append(a.getPosition())
-    
+
                 else:
                     scaredEnemies.append(a.getPosition())
 
@@ -223,7 +224,7 @@ class OffenseAgent(ReflexCaptureAgent):
 
                 # Eating vulnerable ghosts involves less danger, so the radius is relaxed.
                 features['distToScared'] = timer / minDist
-            
+
             oldScaredies = []
             oldBravies = []
             oldEnemyStates = [oldState.getAgentState(i) for i in self.getOpponents(oldState)]
@@ -287,6 +288,27 @@ class DefenseAgent(ReflexCaptureAgent):
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
 
+        self.optimalIdlePosition = None
+        self.chokePoints = None
+
+    def registerInitialState(self, gameState):
+        """
+        This method handles the initial setup of the agent and populates useful fields,
+        such as the team the agent is on and the `pacai.core.distanceCalculator.Distancer`.
+        """
+
+        self.red = gameState.isOnRedTeam(self.index)
+
+        self.distancer = distanceCalculator.Distancer(gameState.getInitialLayout())
+
+        self.distancer.getMazeDistances()
+
+        self.chokePoints = self.findChokes(gameState.getInitialLayout())
+        self.optimalIdlePosition = self.findOptimalIdlePosition(gameState)
+
+        print("Choke Points: ", self.chokePoints)
+        print("Optimal Idle Position: ", self.optimalIdlePosition)
+
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
@@ -349,6 +371,29 @@ class DefenseAgent(ReflexCaptureAgent):
                 features['runAway'] = (1 / min(dists))
                 features['invaderDistance'] = 0
 
+        index = 0
+
+        """
+        i = 0
+        for enemy in enemies:
+            (x, y) = enemy.getPosition()
+            initLayout = gameState.getInitialLayout()
+            border = int(initLayout.getWidth())/2
+
+            if self.offenseDetector[i] > 0.1 and x > border:
+
+                for choke in self.chokePoints:
+                    enemyDistToChoke = self.getMazeDistance(enemy.getPosition(), choke)
+                    myDistToChoke = self.getMazeDistance(myPos, choke)
+
+                    # Enemy is approaching a choke, time to mobilize
+                    if enemyDistToChoke <= myDistToChoke:
+                        features['distanceToAttackedChoke'] = myDistToChoke
+                    else:   # Enemy is not approaching a choke, so don't worry about it
+                        features['distanceToAttackedChoke'] = self.getMazeDistance(myPos, self.optimalIdlePosition)
+
+            i += 1
+            """
         # Slightly discourage stalling and indecisiveness.
         if (action == Directions.STOP):
             features['stop'] = 1
@@ -366,7 +411,15 @@ class DefenseAgent(ReflexCaptureAgent):
         # Attempt to predict the next food pellet the opponent will try to eat.
         # For simple agents, this will be the closest food pellet to them.
         for enemy in enemies:
-            if self.offenseDetector[index] > 0.1:
+            (x, nothing) = self.chokePoints[0]
+            (b, alsoNothing) = enemy.getPosition()
+
+            if self.red == True:
+                invaderIsPastChokes = x > b - 2
+            else:
+                invaderIsPastChokes = x < b - 2
+
+            if self.offenseDetector[index] > 0.1 and invaderIsPastChokes:
                 for food in ourFood:
                     foodDist = self.getMazeDistance(food, enemy.getPosition())
 
@@ -390,6 +443,7 @@ class DefenseAgent(ReflexCaptureAgent):
 
         # Try to predict the next power pellet the opponent will try to eat.
         for enemy in enemies:
+
             if self.offenseDetector[index] > 0.1:
                 for capsule in ourCapsules:
                     capsuleDist = self.getMazeDistance(capsule, enemy.getPosition())
@@ -402,9 +456,55 @@ class DefenseAgent(ReflexCaptureAgent):
 
         features['targetedCapsuleDist'] = 0
 
+        (x, y) = self.chokePoints[0]
+        (b, ugh) = enemy.getPosition()  # Issue
+
+        if self.red == True:
+            invaderIsPastChokes = x > b - 2
+        else:
+            invaderIsPastChokes = x < b - 2
+
         if (closestCapsulePos is not None):
             targetedDist = self.getMazeDistance(myPos, closestCapsulePos)
-            features['targetedCapsuleDist'] = targetedDist
+            if invaderIsPastChokes:
+                features['targetedCapsuleDist'] = targetedDist
+            else:
+                features['targetedCapsuleDist'] = 0
+
+        # Find out which choke point the invader is attempting to access our base from
+        index = 0
+        myDistToChoke = 0
+        distOfClosestChokeToEnemy = float("inf")
+        invadersTargetedChoke = None
+
+        for a in enemies:
+            (x, y) = a.getPosition()
+            (border, whatever) = self.chokePoints[0]
+
+            if self.red == True:
+                invaderIsPastChokes = x < border
+            else:
+                invaderIsPastChokes = x > border
+
+            if self.offenseDetector[index] > 0.1 and not invaderIsPastChokes:
+
+                # Find the closest choke point to the enemy.
+                # This will tell us where they are trying to get in from
+                for choke in self.chokePoints:
+                    enemyDistToChoke = self.getMazeDistance(a.getPosition(), choke)
+
+                    if enemyDistToChoke < distOfClosestChokeToEnemy:
+                        invadersTargetedChoke = choke
+                        distOfClosestChokeToEnemy = enemyDistToChoke
+                        myDistToChoke = self.getMazeDistance(myPos, invadersTargetedChoke)
+
+            index += 1
+
+        if (invadersTargetedChoke is not None):
+            if myDistToChoke >= distOfClosestChokeToEnemy:
+                features['distanceToAttackedChoke'] = myDistToChoke - distOfClosestChokeToEnemy
+            else:
+                features['distanceToAttackedChoke'] = self.getMazeDistance(myPos, self.optimalIdlePosition)
 
         # If our defensive agent is already in danger, attempt to camp the next power pellet.
         # Best-case scenario: the scared timer runs out and the agent defends the pellet.
@@ -412,9 +512,6 @@ class DefenseAgent(ReflexCaptureAgent):
         # scared timer immediately ends.
         if (features['runAway'] > 0):
             features['targetedCapsuleDist'] = targetedDist * 1.2
-
-        print("Optimal Idle Position: ", self.findOptimalIdlePosition(gameState))
-        print("Choke Points: ", self.findChokes(gameState.getInitialLayout()))
 
         # This is scrapped code for finding the path to the nearest food pellet that this
         # agent can reach before the opponent can, under the assumption that the opponent
@@ -477,6 +574,21 @@ class DefenseAgent(ReflexCaptureAgent):
         """
 
         return features
+
+    def getWeights(self, gameState, action):
+        ourWeights = {
+            'distanceToAttackedChoke': -27,
+            'numInvaders': -1000,
+            'notOnDefense': -200,
+            'invaderDistance': -8,
+            'runAway': -100,
+            'targetedFoodDist': -21,
+            'targetedCapsuleDist': -19,
+            'stop': -0.5,
+            'reverse': -1
+        }
+
+        return ourWeights
 
     def findChokes(self, layout):
         """
@@ -609,7 +721,6 @@ class DefenseAgent(ReflexCaptureAgent):
                 if len(chokesOnThisIteration) == numChokes or len(chokesOnThisIteration) == 0:
                     continue
 
-
     def findOptimalIdlePosition(self, gameState):
         """
         Will look for the optimal location to idle at when no enemy invaders are present. This
@@ -636,7 +747,7 @@ class DefenseAgent(ReflexCaptureAgent):
 
             nextChokePoint = chokePoints[index + 1]
             searchProblem = \
-                position.PositionSearchProblem(gameState, start=chokePoint, goal=nextChokePoint)
+                PositionSearchProblem(gameState, start=chokePoint, goal=nextChokePoint)
 
             # To get the shortest path to the next choke, we run BFS. Not too taxing.
             optimalRoute = search.breadthFirstSearch(searchProblem)
@@ -716,20 +827,6 @@ class DefenseAgent(ReflexCaptureAgent):
         """
 
         return optimalIdlePosition
-
-    def getWeights(self, gameState, action):
-        ourWeights = {
-            'numInvaders': -1000,
-            'notOnDefense': -200,
-            'invaderDistance': -8,
-            'runAway': -100,
-            'targetedFoodDist': -21,
-            'targetedCapsuleDist': -19,
-            'stop': -0.5,
-            'reverse': -1
-        }
-
-        return ourWeights
 
 def createTeam(firstIndex, secondIndex, isRed,
         first = 'pacai.student.myTeam.OffenseAgent',
