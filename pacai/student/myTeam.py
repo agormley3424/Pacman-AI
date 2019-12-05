@@ -37,6 +37,32 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         self.walls = None
 
+    def chooseAction(self, gameState):
+        """
+        Picks among the actions with the highest return from `ReflexCaptureAgent.evaluate`.
+        """
+
+        actions = gameState.getLegalActions(self.index)
+        values = [self.evaluate(gameState, a) for a in actions]
+
+        maxValue = max(values)
+        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+        actualAction = random.choice(bestActions)
+        newState = self.getSuccessor(actualAction)
+        newAgentPos = newState.getAgentPosition(self.index)
+        if self.stuckPlace is None:
+            self.stuckPlace = newAgentPos
+        else:
+            if self.getMazeDistance(newAgentPos, self.stuckPlace) < 3:
+                self.stuckTime += 1
+            if self.stuckTime > 5:
+                self.stuck = True
+            else:
+                self.stuck = False
+                self.stuckPlace = newAgentPos
+
+        return actualAction
+
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
@@ -177,6 +203,43 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             features['distanceToFood'] = bestPathDist ** 0.7
 
+            """
+            bestPathDist = 999999
+
+            if (self.riskyFood is not None) and (minEnemyDist is not None):
+                if (minEnemyDist < 6):
+                    for food in foodList:
+                        if food not in self.riskyFood:
+                            thisFoodDist = self.getMazeDistance(nextPos, food)
+
+                            if thisFoodDist < bestPathDist:
+                                bestPathDist = thisFoodDist
+
+                else:
+                    bestPathDist = min([self.getMazeDistance(nextPos, food) for food in foodList])
+
+            features['distanceToFood'] = bestPathDist ** 0.7
+            """
+            """
+            self.evaluateFood(gameState, oldPos)
+
+            if (self.currentSearchFood is None):
+                # print("refresh")
+                self.dangerousFood = []
+                self.evaluateFood(gameState, oldPos)
+
+            if (self.currentSearchFood is not None):
+                minDistance = self.getMazeDistance(myPos, self.currentSearchFood)
+                # print("current food: ", self.currentSearchFood)
+                # print("min distance: ", minDistance)
+
+                # Individual food distances are a bit irrelevant from far away
+                features['distanceToFood'] = minDistance ** 0.7
+
+            else:
+                print("no food found")
+            """
+
             sumFoodX = 0
             sumFoodY = 0
             for food in foodList:
@@ -305,6 +368,9 @@ class StrategyAgentA(ReflexCaptureAgent):
         if (action == rev):
             features['reverse'] = 1
 
+        if self.stuck:
+
+
         # self.lastPos = gameState.getAgentState(self.index).getPosition()
 
         return features
@@ -356,6 +422,9 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         # This can help the agent detect the potential behavior of the opposing agents.
         self.offenseDetector = [1, 1]
+        self.stuckTime = 0
+        self.stuckPlace = None
+        self.stuck = False
 
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave
@@ -476,12 +545,6 @@ class StrategyAgentB(ReflexCaptureAgent):
             targetedDist = self.getMazeDistance(myPos, closestCapsulePos)
             features['targetedCapsuleDist'] = targetedDist
 
-        # If our defensive agent is already in danger, attempt to camp the next power pellet.
-        # Best-case scenario: the scared timer runs out and the agent defends the pellet.
-        # Worst-case scenario: the opponent eats the second pellet with our agent and the
-        # scared timer immediately ends.
-        if (features['runAway'] > 0):
-            features['targetedCapsuleDist'] = targetedDist * 1.2
 
         return features
 
