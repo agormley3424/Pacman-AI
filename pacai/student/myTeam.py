@@ -37,6 +37,8 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         self.walls = None
 
+        self.visitedPos = []
+
     def updateExpectation(self, gameState):
         # Update our estimate of how we expect our opponents to behave.
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
@@ -247,6 +249,32 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         myPos = myState.getPosition()
 
+        features['visitedPenalty'] = 0
+
+        if myPos not in self.visitedPos:
+            self.visitedPos.append(myPos)
+            # print(self.visitedPos)
+
+        if myPos in self.visitedPos:
+            # print("We have visited: ", nextPos)
+            # features['visitedPenalty'] = 1
+
+            legalActions = gameState.getLegalActions(self.index)
+
+            cornered = True
+            for legalAction in legalActions:
+                legalState = self.getSuccessor(gameState, legalAction)
+
+                if legalState.getAgentState(self.index).getPosition() not in self.visitedPos:
+                    cornered = False
+
+            if cornered:
+                self.visitedPos = []
+                # print("Reset visisted positions")
+
+        if nextPos in self.visitedPos:
+            features['visitedPenalty'] = 1
+
         if (self.walls is not None):
             openness = 0
             otherPos = (myPos[0] + 1, myPos[1])
@@ -359,7 +387,8 @@ class StrategyAgentA(ReflexCaptureAgent):
             'onDefense': -1,
             'openness': 0,
             'stop': -10,
-            'reverse': 0
+            'reverse': 0,
+            'visitedPenalty': -1,
         }
 
         return ourWeights
