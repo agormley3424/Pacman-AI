@@ -1,9 +1,12 @@
-# from pacai.util import reflection
+"""
+The-Q-Continuum
+CSE 140
+p4 myTeam.py
+"""
+
 from pacai.agents.capture.reflex import ReflexCaptureAgent
 from pacai.core.directions import Directions
 from pacai.util import counter
-# from pacai.util import probability
-# import random
 
 # States are CaptureGameStates
 
@@ -17,7 +20,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
     The agent is both greedy and will attempt to keep a good distance away from ghosts.
 
-    Fatal flaw: This agent can be deadlocked on very specific maps, and it does not
+    Fatal flaw: This agent can be deadlocked on certain maps, and it does not
     use minimax search, so it is prone to making poorly-informed movements in tight spots.
     """
 
@@ -62,6 +65,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             index += 1
 
+    # Scrapped feature: agent evaluates which food pellets are too dangerous to obtain
     def evaluateFood(self, gameState, pos):
         foodList = self.getFood(gameState).asList()
         bestDist = 999999
@@ -81,7 +85,6 @@ class StrategyAgentA(ReflexCaptureAgent):
             self.dangerousFood.append(self.currentSearchFood)
             self.currentSearchFood = None
             self.foodPenalty = 0
-            # print("update dangerousFood: ", self.dangerousFood)
 
         if self.currentSearchFood is None:
             for food in foodList:
@@ -102,13 +105,14 @@ class StrategyAgentA(ReflexCaptureAgent):
                             bestDist = dist
                             bestFood = food
 
-        # print("bestFood: ", bestFood)
         self.currentSearchFood = bestFood
 
     def getFeatures(self, gameState, action):
+        # Obtain wall locations
         if (self.walls is None):
             self.walls = gameState.getWalls().asList()
 
+        # Scrapped: Agent evaluates which food pellets are riskier to obtain
         if (self.riskyFood is None):
             riskyFood = []
 
@@ -162,12 +166,6 @@ class StrategyAgentA(ReflexCaptureAgent):
         if len(enemyDists) > 0:
             minEnemyDist = min([dist for dist in enemyDists])
 
-            """
-            if (minEnemyDist < 2):
-                # If the enemy is too close, don't consider eating nearby pellets.
-                features['successorScore'] = 0
-            """
-
         # Compute distance to the nearest food.
         foodList = self.getFood(successor).asList()
 
@@ -179,6 +177,7 @@ class StrategyAgentA(ReflexCaptureAgent):
 
             features['distanceToFood'] = bestPathDist ** 0.7
 
+            # Scrapped: finding food based on how safe the food is to obtain
             """
             bestPathDist = 999999
 
@@ -251,14 +250,13 @@ class StrategyAgentA(ReflexCaptureAgent):
 
         features['visitedPenalty'] = 0
 
+        # Keep track of positions visited
         if myPos not in self.visitedPos:
             self.visitedPos.append(myPos)
             # print(self.visitedPos)
 
+        # Check if this agent has been cornered
         if myPos in self.visitedPos:
-            # print("We have visited: ", nextPos)
-            # features['visitedPenalty'] = 1
-
             legalActions = gameState.getLegalActions(self.index)
 
             cornered = True
@@ -268,13 +266,15 @@ class StrategyAgentA(ReflexCaptureAgent):
                 if legalState.getAgentState(self.index).getPosition() not in self.visitedPos:
                     cornered = False
 
+            # Reset visited positions if there are no unvisited positions nearby
             if cornered:
                 self.visitedPos = []
-                # print("Reset visisted positions")
 
+        # Give penalty if position has already been visited
         if nextPos in self.visitedPos:
             features['visitedPenalty'] = 1
 
+        # Reward agent for traversing more open paths
         if (self.walls is not None):
             openness = 0
             otherPos = (myPos[0] + 1, myPos[1])
@@ -297,13 +297,12 @@ class StrategyAgentA(ReflexCaptureAgent):
             if (otherPos not in self.walls):
                 openness += 1
 
+            # Openness only becomes relevant if our agent is in severe danger.
             if (minEnemyDist is not None) and (minEnemyDist < 2):
                 features['openness'] = (openness ** 1.1) - 1
-                # features['successorScore'] = 0
 
             else:
                 features['openness'] = 0
-            # print(openness)
 
         # Computes whether we're on defense (1) or offense (0).
         features['onDefense'] = 1
@@ -369,8 +368,6 @@ class StrategyAgentA(ReflexCaptureAgent):
         rev = Directions.REVERSE[gameState.getAgentState(self.index).getDirection()]
         if (action == rev):
             features['reverse'] = 1
-
-        # self.lastPos = gameState.getAgentState(self.index).getPosition()
 
         return features
 
@@ -551,8 +548,8 @@ class StrategyAgentB(ReflexCaptureAgent):
 
         # This is scrapped code for finding the path to the nearest food pellet that this
         # agent can reach before the opponent can, under the assumption that the opponent
-        # will always collect the closest food pellet to it. This code is left here in
-        # case we want to use some version of it in the future, and also because it took
+        # will always collect the closest food pellet to it. This code was left here in
+        # case we wanted to use some version of it in the future, and also because it took
         # a while to write it all out.
         """
         ourFood = self.getFoodYouAreDefending(successor).asList()
@@ -632,9 +629,6 @@ def createTeam(firstIndex, secondIndex, isRed):
     isRed is True if the red team is being created,
     and will be False if the blue team is being created.
     """
-
-    # firstAgent = StrategyAgentA
-    # secondAgent = StrategyAgentB
 
     return [
         StrategyAgentA(firstIndex),
